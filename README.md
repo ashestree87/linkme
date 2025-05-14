@@ -8,7 +8,7 @@ A Cloudflare Workers project built with TypeScript.
 linkme/
 ├── src/                 # Source code
 │   ├── handlers/        # Route handlers
-│   ├── middleware/      # Middleware functions
+│   ├── middleware/      # Middleware function
 │   ├── utils/           # Utility functions
 │   └── index.ts         # Main entry point
 ├── public/              # Static assets
