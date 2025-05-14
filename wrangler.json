@@ -1,0 +1,52 @@
+{
+  "name": "linkme",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-05-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "49ef1ba682ad8cfd720c86699ae17521",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "linkme-db",
+      "database_id": "d065973b-a304-4de6-bf8d-5b7e709f7677"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "TARGETS",
+      "id": "99226800f585490dab6d437ddaaf8960"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "queue": "linkedin-connections",
+        "binding": "LINKEDIN_CONNECTIONS_QUEUE"
+      },
+      {
+        "queue": "linkedin-dms",
+        "binding": "LINKEDIN_DMS_QUEUE"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "linkedin-connections",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3
+      },
+      {
+        "queue": "linkedin-dms",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+  "browser": {
+    "binding": "CRAWLER_BROWSER"
+  }
+} 
