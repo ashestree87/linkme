@@ -1,4 +1,5 @@
 import adminUI from './adminUI';
+import simpleAdmin from './simpleAdmin';
 import sendConnection from './sendConnection';
 import sendDM from './sendDM';
 import scheduler from './scheduler';
@@ -52,12 +53,13 @@ export default {
       return debug.fetch(request, env);
     }
     
-    // Root route - handle explicitly for admin UI
+    // Root route - use the simple admin UI instead of the router-based one
     if (url.pathname === '/' || url.pathname === '') {
       try {
-        return await adminUI.fetch(request, env);
+        // Use the simpler admin UI to avoid router issues
+        return await simpleAdmin.fetch(request, env);
       } catch (error) {
-        console.error("Error in adminUI:", error);
+        console.error("Error in simpleAdmin:", error);
         
         // Create a simple error response
         const errorHtml = `
@@ -87,7 +89,7 @@ export default {
       }
     }
     
-    // All other routes
+    // All other routes - still try the regular admin UI
     try {
       return await adminUI.fetch(request, env);
     } catch (error) {
