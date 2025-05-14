@@ -1,0 +1,71 @@
+name = "linkme"
+main = "src/index.ts"
+compatibility_date = "2025-05-14"
+compatibility_flags = ["nodejs_compat"]
+node_compat = true
+
+[build]
+command = "npm run build"
+minify = true
+
+# KV Namespace binding
+[[kv_namespaces]]
+binding = "LINKME_TARGETS"
+id = "19006b5bfa3240f5aaea4568193695dc"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "linkme-db"
+database_id = "944dcf3e-3c48-48db-a170-d02ae7dec1b8"
+
+# Queue bindings
+[[queues.producers]]
+queue = "linkedin-connections"
+binding = "LINKIN_CONNECTIONS_QUEUE"
+
+[[queues.consumers]]
+queue = "linkedin-connections"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[queues.producers]]
+queue = "linkedin-dms"
+binding = "LINKEDIN_DMS_QUEUE"
+
+[[queues.consumers]]
+queue = "linkedin-dms"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+# Cron trigger for scheduler (hourly)
+[triggers]
+crons = ["0 * * * *"]
+
+# Environment variables
+[vars]
+LI_AT = "placeholder_li_at_cookie_value"
+CSRF = "placeholder_csrf_token_value"
+USERAGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+
+# Environment-specific configurations
+[env.production]
+# Production-specific settings
+workers_dev = false
+route = { pattern = "linkme.eighty7.uk/*", zone_name = "eighty7.uk" }
+
+[env.staging]
+# Staging-specific settings
+workers_dev = true
+[env.staging.vars]
+LI_AT = "staging_li_at_cookie_value"
+CSRF = "staging_csrf_token_value"
+
+[env.development]
+# Development-specific settings
+workers_dev = true
+[env.development.vars]
+LI_AT = "dev_li_at_cookie_value"
+CSRF = "dev_csrf_token_value" 

@@ -1,0 +1,25 @@
+{
+	"name": "linkme",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"build": "esbuild src/index.ts --bundle --outfile=dist/index.js --format=esm --target=es2022",
+		"test": "jest"
+	},
+	"dependencies": {
+		"@cloudflare/puppeteer": "latest",
+		"htmx.org": "latest",
+		"itty-router": "latest"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20250514.0",
+		"@types/jest": "latest",
+		"@types/service-worker-mock": "^2.0.4",
+		"esbuild": "latest",
+		"jest": "latest",
+		"typescript": "^5.5.2",
+		"wrangler": "^4.14.4"
+	}
+}
