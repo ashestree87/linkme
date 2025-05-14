@@ -67,6 +67,12 @@ const getStatusBadge = (status: string): string => {
 // Main route - display leads
 router.get('/', async (request, env: Env) => {
   try {
+    // Verify KV binding exists
+    if (!env || !env.TARGETS) {
+      console.error("Missing TARGETS KV binding");
+      return new Response("Error: Missing KV binding", { status: 500 });
+    }
+    
     // List all leads from KV
     const { keys } = await env.TARGETS.list();
     
@@ -75,8 +81,13 @@ router.get('/', async (request, env: Env) => {
     for (const key of keys) {
       const leadString = await env.TARGETS.get(key.name);
       if (leadString) {
-        const lead = JSON.parse(leadString) as LeadWithMeta;
-        leads.push(lead);
+        try {
+          const lead = JSON.parse(leadString) as LeadWithMeta;
+          leads.push(lead);
+        } catch (parseError) {
+          console.error(`Error parsing lead ${key.name}:`, parseError);
+          // Continue with other leads
+        }
       }
     }
     
@@ -91,7 +102,7 @@ router.get('/', async (request, env: Env) => {
     });
     
     // Generate table rows
-    const leadsTable = leads.map(lead => `
+    const leadsTable = leads.length > 0 ? leads.map(lead => `
       <tr id="lead-${lead.urn}" class="hover:bg-gray-50">
         <td class="px-6 py-4 whitespace-nowrap">${lead.urn}</td>
         <td class="px-6 py-4">${lead.name}</td>
@@ -110,7 +121,13 @@ router.get('/', async (request, env: Env) => {
           </button>
         </td>
       </tr>
-    `).join('');
+    `).join('') : `
+      <tr>
+        <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+          No leads found. Upload some leads using the form above.
+        </td>
+      </tr>
+    `;
     
     // Generate the upload form
     const uploadForm = `
@@ -170,7 +187,11 @@ router.get('/', async (request, env: Env) => {
       headers: { 'Content-Type': 'text/html' }
     });
   } catch (error) {
-    return new Response(`Error: ${error}`, { status: 500 });
+    console.error("Error in main route:", error);
+    return new Response(`Error: ${error instanceof Error ? error.message : String(error)}`, { 
+      status: 500,
+      headers: { "Content-Type": "text/plain" }
+    });
   }
 });
 
@@ -198,7 +219,29 @@ const parseCSV = async (formData: FormData): Promise<CSVLead[]> => {
 // Upload CSV route
 router.post('/upload', async (request, env: Env) => {
   try {
-    const formData = await request.formData();
+    // Check if request has the formData method
+    if (typeof request.formData !== 'function') {
+      return new Response(`Error: Request missing formData method`, {
+        status: 400,
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+    
+    // Get the form data
+    let formData;
+    try {
+      formData = await request.formData();
+    } catch (formError) {
+      console.error("FormData error:", formError);
+      return new Response(`
+        <div class="mt-4 p-4 bg-red-50 text-red-800 rounded-md">
+          Error processing form data: ${formError instanceof Error ? formError.message : String(formError)}
+        </div>
+      `, {
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+    
     const leads = await parseCSV(formData);
     
     // Store leads to KV with status="new"
@@ -222,9 +265,10 @@ router.post('/upload', async (request, env: Env) => {
       headers: { 'Content-Type': 'text/html' }
     });
   } catch (error) {
+    console.error("Upload error:", error);
     return new Response(`
       <div class="mt-4 p-4 bg-red-50 text-red-800 rounded-md">
-        Error: ${error}
+        Error: ${error instanceof Error ? error.message : String(error)}
       </div>
     `, {
       headers: { 'Content-Type': 'text/html' }
@@ -235,6 +279,12 @@ router.post('/upload', async (request, env: Env) => {
 // Pause lead route
 router.post('/pause/:urn', async (request, env: Env) => {
   try {
+    // Verify KV binding exists
+    if (!env || !env.TARGETS) {
+      console.error("Missing TARGETS KV binding");
+      return new Response("Error: Missing KV binding", { status: 500 });
+    }
+    
     const { params } = request;
     const urn = params?.urn;
     
@@ -249,7 +299,14 @@ router.post('/pause/:urn', async (request, env: Env) => {
     }
     
     // Parse and update lead
-    const lead = JSON.parse(leadString);
+    let lead;
+    try {
+      lead = JSON.parse(leadString);
+    } catch (parseError) {
+      console.error(`Error parsing lead ${urn}:`, parseError);
+      return new Response(`Error parsing lead data: ${parseError instanceof Error ? parseError.message : String(parseError)}`, { status: 500 });
+    }
+    
     lead.status = 'paused';
     
     // Save updated lead
@@ -272,7 +329,8 @@ router.post('/pause/:urn', async (request, env: Env) => {
       headers: { 'Content-Type': 'text/html' }
     });
   } catch (error) {
-    return new Response(`Error: ${error}`, { status: 500 });
+    console.error("Error in pause route:", error);
+    return new Response(`Error: ${error instanceof Error ? error.message : String(error)}`, { status: 500 });
   }
 });
 
@@ -281,5 +339,17 @@ router.all('*', () => new Response('Not Found', { status: 404 }));
 
 // Export the router handler
 export default {
-  fetch: router.handle
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      // Use the router to handle the request
+      const response = await router.handle(request, env);
+      return response;
+    } catch (error) {
+      console.error("Error in adminUI router:", error);
+      return new Response(`Error in adminUI: ${error instanceof Error ? error.message : String(error)}`, { 
+        status: 500,
+        headers: { "Content-Type": "text/plain" }
+      });
+    }
+  }
 }; 
