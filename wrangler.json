@@ -6,7 +6,7 @@
   "account_id": "49ef1ba682ad8cfd720c86699ae17521",
   "routes": [
     {
-      "pattern": "linkme.ash-lane.com/*",
+      "pattern": "linkme.ash-lane.com",
       "custom_domain": true
     }
   ],
