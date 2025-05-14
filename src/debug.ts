@@ -72,10 +72,21 @@ export default {
       let d1Result = "D1 Not Available";
       if (env.DB) {
         try {
-          const result = await env.DB.prepare("SELECT sqlite_version() as version").first();
-          d1Result = `D1 Success: SQLite version ${result.version}`;
+          // Try to access the events table
+          const result = await env.DB.prepare("SELECT COUNT(*) as count FROM events").first();
+          d1Result = `D1 Success: Found ${result.count} events`;
         } catch (error: any) {
-          d1Result = `D1 Error: ${error.message}`;
+          // If the first query fails, check if the table exists
+          try {
+            const tableCheck = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='events'").first();
+            if (tableCheck && tableCheck.name) {
+              d1Result = "D1 Success: events table exists but is empty";
+            } else {
+              d1Result = "D1 Connected but events table not found";
+            }
+          } catch (tableError: any) {
+            d1Result = `D1 Error: ${error.message}`;
+          }
         }
       }
 

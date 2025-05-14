@@ -52,11 +52,46 @@ export default {
       return debug.fetch(request, env);
     }
     
-    // All other routes go to the admin UI
+    // Root route - handle explicitly for admin UI
+    if (url.pathname === '/' || url.pathname === '') {
+      try {
+        return await adminUI.fetch(request, env);
+      } catch (error) {
+        console.error("Error in adminUI:", error);
+        
+        // Create a simple error response
+        const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>LinkMe - Error</title>
+          <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+        </head>
+        <body class="bg-gray-100 min-h-screen p-8">
+          <div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6">
+            <h1 class="text-2xl font-bold text-red-600 mb-4">Error Loading Admin UI</h1>
+            <p class="mb-4">There was an error loading the LinkMe Admin UI:</p>
+            <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded mb-4">
+              ${error instanceof Error ? error.message : String(error)}
+            </div>
+            <p class="mb-4">Please try checking the <a href="/debug" class="text-blue-600 underline">diagnostic page</a> for more information.</p>
+          </div>
+        </body>
+        </html>
+        `;
+        
+        return new Response(errorHtml, { 
+          status: 500,
+          headers: { "Content-Type": "text/html" }
+        });
+      }
+    }
+    
+    // All other routes
     try {
       return await adminUI.fetch(request, env);
     } catch (error) {
-      console.error("Error in adminUI:", error);
+      console.error("Error in adminUI for path:", url.pathname, error);
       return new Response(`Error: ${error instanceof Error ? error.message : String(error)}`, { 
         status: 500,
         headers: { "Content-Type": "text/plain" }
