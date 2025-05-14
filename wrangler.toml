@@ -54,7 +54,7 @@ USERAGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 
 [env.production]
 # Production-specific settings
 workers_dev = false
-route = { pattern = "linkme.eighty7.uk/*", zone_name = "eighty7.uk" }
+route = { pattern = "linkme.ash-lane.com/*", zone_name = "ash-lane.com" }
 
 [env.staging]
 # Staging-specific settings
