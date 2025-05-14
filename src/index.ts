@@ -3,6 +3,7 @@ import sendConnection from './sendConnection';
 import sendDM from './sendDM';
 import scheduler from './scheduler';
 import webhook from './webhook';
+import debug from './debug';
 
 /**
  * Main entry point for the LinkMe application.
@@ -46,8 +47,21 @@ export default {
       return webhook.fetch(request, env);
     }
     
+    // Route /debug to diagnostic page
+    if (url.pathname === '/debug') {
+      return debug.fetch(request, env);
+    }
+    
     // All other routes go to the admin UI
-    return adminUI.fetch(request, env);
+    try {
+      return await adminUI.fetch(request, env);
+    } catch (error) {
+      console.error("Error in adminUI:", error);
+      return new Response(`Error: ${error instanceof Error ? error.message : String(error)}`, { 
+        status: 500,
+        headers: { "Content-Type": "text/plain" }
+      });
+    }
   },
   
   /**
