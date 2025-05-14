@@ -4,11 +4,10 @@
   "compatibility_date": "2025-05-14",
   "compatibility_flags": ["nodejs_compat"],
   "account_id": "49ef1ba682ad8cfd720c86699ae17521",
+  "workers_dev": true,
   "routes": [
-    {
-      "pattern": "linkme.ash-lane.com",
-      "custom_domain": true
-    }
+    "linkme.ash-lane.com/*",
+    "www.linkme.ash-lane.com/*"
   ],
   "d1_databases": [
     {

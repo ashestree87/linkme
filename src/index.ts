@@ -36,6 +36,9 @@ export default {
    * but route /accepted to the webhook handler
    */
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Store environment in global context for access in other modules
+    (globalThis as any).ENVIRONMENT = env;
+    
     const url = new URL(request.url);
     
     // Route /accepted to webhook handler
@@ -50,7 +53,12 @@ export default {
   /**
    * Handle scheduled events (cron triggers) - delegate to scheduler
    */
-  scheduled: scheduler.scheduled,
+  scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Store environment in global context for access in other modules
+    (globalThis as any).ENVIRONMENT = env;
+    
+    return scheduler.scheduled(event, env, ctx);
+  },
   
   /**
    * Queue handlers for processing LinkedIn connections and DMs
@@ -58,11 +66,17 @@ export default {
   queue: {
     // Handle connection requests 
     'linkedin-connections': async (batch: MessageBatch<any>, env: Env): Promise<void> => {
+      // Store environment in global context for access in other modules
+      (globalThis as any).ENVIRONMENT = env;
+      
       return sendConnection.queue(batch, env);
     },
     
     // Handle DM sending
     'linkedin-dms': async (batch: MessageBatch<any>, env: Env): Promise<void> => {
+      // Store environment in global context for access in other modules
+      (globalThis as any).ENVIRONMENT = env;
+      
       return sendDM.queue(batch, env);
     }
   }

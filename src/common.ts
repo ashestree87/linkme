@@ -15,20 +15,23 @@ export type Lead = {
  * @returns Promise with the function result
  */
 export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T> {
-  // We need to access the browser binding from the environment
-  const browser = await launch(process.env.CRAWLER_BROWSER as any);
+  // Get the environment from the context
+  const env = (globalThis as any).ENVIRONMENT;
+  
+  // Use the browser binding directly
+  const browser = await launch(env?.CRAWLER_BROWSER);
 
   try {
     const page = await browser.newPage();
     
     // Set user agent from environment variable
-    await page.setUserAgent(process.env.USERAGENT as string);
+    await page.setUserAgent(env?.USERAGENT || 'Mozilla/5.0');
     
     // Set LinkedIn cookies
     await page.setCookie(
       {
         name: 'li_at',
-        value: process.env.LI_AT as string,
+        value: env?.LI_AT || '',
         domain: '.linkedin.com',
         path: '/',
         httpOnly: true,
@@ -36,7 +39,7 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
       },
       {
         name: 'JSESSIONID',
-        value: process.env.CSRF as string,
+        value: env?.CSRF || '',
         domain: '.linkedin.com',
         path: '/',
         httpOnly: true,
