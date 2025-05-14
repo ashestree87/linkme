@@ -5,7 +5,7 @@
 	"scripts": {
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
-		"build": "esbuild src/index.ts --bundle --outfile=dist/index.js --format=esm --target=es2022",
+		"build": "esbuild src/index.ts --bundle --outfile=dist/index.js --format=esm --target=es2022 --platform=node",
 		"test": "jest"
 	},
 	"dependencies": {
