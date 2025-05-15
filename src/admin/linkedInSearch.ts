@@ -1058,15 +1058,10 @@ async function searchConnectionsBackground(
     }
     
     addDebugLog(debugSessionId, `Would search for connections with query: "${searchQuery}"`);
-    
-    // Mock some search results for testing without browser
     addDebugLog(debugSessionId, "Generating mock search results for testing");
     
-    // Simulate waiting for results - this will help determine if the issue is with timing out
-    addDebugLog(debugSessionId, "Waiting 5 seconds to simulate search process...");
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    addDebugLog(debugSessionId, "Waiting period completed successfully");
+    // Skip using Promise with setTimeout since it's causing issues
+    addDebugLog(debugSessionId, "Skipping timeout - Cloudflare Workers may have issues with setTimeout/Promises");
     
     // Mock some results - these are completely fake and just for testing the flow
     const mockResults = [
