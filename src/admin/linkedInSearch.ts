@@ -1056,297 +1056,73 @@ async function searchConnectionsBackground(
     
     addDebugLog(debugSessionId, `Will search for connections with query: "${searchQuery}"`);
     
-    try {
-      // Try to use browser but with direct approach to avoid multiple layers of abstraction
-      addDebugLog(debugSessionId, "Attempting to launch browser directly");
+    // Diagnostic approach to troubleshoot browser issues
+    addDebugLog(debugSessionId, "Starting browser diagnostic checks");
+    
+    // Check if browser binding exists in environment
+    if (!env.CRAWLER_BROWSER) {
+      addDebugLog(debugSessionId, "ERROR: CRAWLER_BROWSER binding is not available in environment");
+    } else {
+      addDebugLog(debugSessionId, "CRAWLER_BROWSER binding is available in environment");
       
-      // Import the minimal necessary modules
-      const { launch } = await import('@cloudflare/puppeteer');
-      const { captureDebugScreenshot } = await import('../debug');
+      // Log the type of the browser binding
+      addDebugLog(debugSessionId, `CRAWLER_BROWSER type: ${typeof env.CRAWLER_BROWSER}`);
       
-      // Launch browser directly
-      addDebugLog(debugSessionId, "Launching browser using Cloudflare binding");
-      const browser = await launch(env.CRAWLER_BROWSER);
-      addDebugLog(debugSessionId, "Browser launched successfully");
-      
+      // Try to get info about the binding without launching it
       try {
-        // Create a new page
-        addDebugLog(debugSessionId, "Creating new browser page");
-        const page = await browser.newPage();
-        addDebugLog(debugSessionId, "Browser page created successfully");
-        
-        // Set basic options
-        await page.setViewport({ width: 1280, height: 800 });
-        await page.setUserAgent(env.USERAGENT || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)');
-        
-        // Set LinkedIn cookies
-        addDebugLog(debugSessionId, "Setting LinkedIn cookies");
-        await page.setCookie(
-          {
-            name: 'li_at',
-            value: env.LI_AT,
-            domain: '.linkedin.com',
-            path: '/',
-            httpOnly: true,
-            secure: true,
-          },
-          {
-            name: 'JSESSIONID',
-            value: env.CSRF,
-            domain: '.linkedin.com',
-            path: '/',
-            httpOnly: true,
-            secure: true,
-          }
-        );
-        
-        // Navigate to LinkedIn
-        addDebugLog(debugSessionId, "Navigating to LinkedIn");
-        await page.goto('https://www.linkedin.com/', { waitUntil: 'domcontentloaded' });
-        addDebugLog(debugSessionId, "Loaded LinkedIn homepage");
-        
-        // Take a screenshot to verify page loaded
-        try {
-          const screenshot = await page.screenshot({ type: 'jpeg', quality: 80 });
-          const base64Image = screenshot.toString('base64');
-          addDebugLog(debugSessionId, "Captured screenshot of LinkedIn homepage");
-          
-          // Add the screenshot to debug session
-          const { addDebugScreenshot } = await import('../debug');
-          addDebugScreenshot(debugSessionId, "LinkedIn Homepage", base64Image);
-        } catch (screenshotError: unknown) {
-          const errorMessage = screenshotError instanceof Error ? screenshotError.message : String(screenshotError);
-          addDebugLog(debugSessionId, `Failed to capture screenshot: ${errorMessage}`);
+        // Check if it's a plain object
+        if (typeof env.CRAWLER_BROWSER === 'object') {
+          const keys = Object.keys(env.CRAWLER_BROWSER);
+          addDebugLog(debugSessionId, `CRAWLER_BROWSER object keys: ${JSON.stringify(keys)}`);
         }
-        
-        // Navigate to connections page
-        addDebugLog(debugSessionId, "Navigating to LinkedIn connections page");
-        await page.goto('https://www.linkedin.com/mynetwork/invite-connect/connections/', { 
-          waitUntil: 'domcontentloaded',
-          timeout: 30000
-        });
-        addDebugLog(debugSessionId, "Loaded connections page");
-        
-        // Take another screenshot
-        try {
-          const screenshot = await page.screenshot({ type: 'jpeg', quality: 80 });
-          const base64Image = screenshot.toString('base64');
-          addDebugLog(debugSessionId, "Captured screenshot of connections page");
-          
-          // Add the screenshot to debug session
-          const { addDebugScreenshot } = await import('../debug');
-          addDebugScreenshot(debugSessionId, "Connections Page", base64Image);
-        } catch (screenshotError: unknown) {
-          const errorMessage = screenshotError instanceof Error ? screenshotError.message : String(screenshotError);
-          addDebugLog(debugSessionId, `Failed to capture screenshot: ${errorMessage}`);
-        }
-        
-        // Try to find the search input
-        addDebugLog(debugSessionId, "Looking for search input field");
-        const searchSelectors = [
-          '.mn-connections__search-input',
-          'input[aria-label="Search connections"]',
-          '.search-global-typeahead__input',
-          '.mn-community-summary__search-input',
-          'input.search-global-typeahead__input',
-          '#network-search-input'
-        ];
-        
-        let searchInput = null;
-        for (const selector of searchSelectors) {
-          try {
-            searchInput = await page.$(selector);
-            if (searchInput) {
-              addDebugLog(debugSessionId, `Found search input with selector: ${selector}`);
-              break;
-            }
-          } catch (e) {
-            // Continue trying other selectors
-          }
-        }
-        
-        if (!searchInput) {
-          addDebugLog(debugSessionId, "Could not find search input on connections page");
-          
-          // Try global search instead
-          addDebugLog(debugSessionId, "Trying global search instead");
-          await page.goto('https://www.linkedin.com/search/results/people/?network=%5B%22F%22%5D', {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
-          });
-          
-          const globalSearchSelectors = [
-            'input.search-global-typeahead__input',
-            '.search-global-typeahead__input'
-          ];
-          
-          for (const selector of globalSearchSelectors) {
-            try {
-              searchInput = await page.$(selector);
-              if (searchInput) {
-                addDebugLog(debugSessionId, `Found global search input with selector: ${selector}`);
-                break;
-              }
-            } catch (e) {
-              // Continue trying other selectors
-            }
-          }
-        }
-        
-        // If still no search input found, we'll fetch some connections anyway
-        if (!searchInput) {
-          addDebugLog(debugSessionId, "Could not find any search input, will try to get visible connections");
-          
-          // Extract whatever connections are visible
-          const connections = await page.evaluate(() => {
-            // Use various selectors to find connection cards/elements
-            const selectors = [
-              '.mn-connections__card',
-              '.mn-connection-card',
-              '.entity-result__item',
-              '.reusable-search__result-container'
-            ];
-            
-            let cards: Element[] = [];
-            for (const selector of selectors) {
-              const elements = document.querySelectorAll(selector);
-              if (elements.length > 0) {
-                cards = Array.from(elements);
-                break;
-              }
-            }
-            
-            // Extract connection data
-            return cards.map(card => {
-              const nameEl = card.querySelector('h3, .name, .mn-connection-card__name, .entity-result__title-text');
-              const linkEl = card.querySelector('a[href*="/in/"]') as HTMLAnchorElement | null;
-              
-              return {
-                name: nameEl ? nameEl.textContent?.trim() || 'Unknown' : 'Unknown',
-                profileUrl: linkEl ? linkEl.href : '',
-                urn: linkEl ? linkEl.href.match(/\/in\/([^\/]+)/)?.[1] || '' : ''
-              };
-            }).filter(c => c.profileUrl); // Only return those with profile URLs
-          });
-          
-          if (connections.length > 0) {
-            addDebugLog(debugSessionId, `Found ${connections.length} connections without searching`);
-            connections.forEach((conn, index) => {
-              addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
-            });
-          } else {
-            addDebugLog(debugSessionId, "No connections found on the page");
-          }
-        } else {
-          // We found a search input, so use it
-          addDebugLog(debugSessionId, `Entering search query: "${searchQuery}"`);
-          
-          // Type into the search box
-          await searchInput.click();
-          await searchInput.type(searchQuery);
-          await page.keyboard.press('Enter');
-          
-          addDebugLog(debugSessionId, "Search query submitted, waiting for results");
-          
-          // Wait briefly for results (no long timeouts)
-          await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(e => {
-            addDebugLog(debugSessionId, `Navigation wait timed out (this may be normal): ${e.message}`);
-          });
-          
-          // Take screenshot of search results
-          try {
-            const screenshot = await page.screenshot({ type: 'jpeg', quality: 80 });
-            const base64Image = screenshot.toString('base64');
-            addDebugLog(debugSessionId, "Captured screenshot of search results");
-            
-            // Add the screenshot to debug session
-            const { addDebugScreenshot } = await import('../debug');
-            addDebugScreenshot(debugSessionId, "Search Results", base64Image);
-          } catch (screenshotError: unknown) {
-            const errorMessage = screenshotError instanceof Error ? screenshotError.message : String(screenshotError);
-            addDebugLog(debugSessionId, `Failed to capture results screenshot: ${errorMessage}`);
-          }
-          
-          // Extract the search results
-          const connections = await page.evaluate(() => {
-            // Use various selectors to find result items
-            const selectors = [
-              '.mn-connections__card',
-              '.mn-connection-card',
-              '.search-result__wrapper',
-              '.search-result',
-              '.reusable-search__result-container',
-              '.entity-result',
-              'li.reusable-search__result-container'
-            ];
-            
-            let results: Element[] = [];
-            for (const selector of selectors) {
-              const elements = document.querySelectorAll(selector);
-              if (elements.length > 0) {
-                results = Array.from(elements);
-                break;
-              }
-            }
-            
-            // Extract connection data
-            return results.map(result => {
-              const nameEl = result.querySelector('h3, .name, .mn-connection-card__name, .entity-result__title-text, .actor-name');
-              const linkEl = result.querySelector('a[href*="/in/"]') as HTMLAnchorElement | null;
-              
-              return {
-                name: nameEl ? nameEl.textContent?.trim() || 'Unknown' : 'Unknown',
-                profileUrl: linkEl ? linkEl.href : '',
-                urn: linkEl ? linkEl.href.match(/\/in\/([^\/]+)/)?.[1] || '' : ''
-              };
-            }).filter(c => c.profileUrl); // Only return those with profile URLs
-          });
-          
-          // Log the results
-          if (connections.length > 0) {
-            addDebugLog(debugSessionId, `Found ${connections.length} connections matching search query`);
-            connections.forEach((conn, index) => {
-              addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
-            });
-          } else {
-            addDebugLog(debugSessionId, "No connections found matching the search query");
-          }
-        }
-        
-      } finally {
-        // Always close the browser to avoid resource leaks
-        addDebugLog(debugSessionId, "Closing browser");
-        await browser.close();
-        addDebugLog(debugSessionId, "Browser closed successfully");
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        addDebugLog(debugSessionId, `Error inspecting CRAWLER_BROWSER: ${errorMessage}`);
       }
-      
-      // Mark the search as complete
-      addDebugLog(debugSessionId, "Search process completed successfully");
-      completeDebugSession(debugSessionId, "Search completed successfully");
-      
-    } catch (browserError: unknown) {
-      // Handle browser-specific errors
-      const errorMessage = browserError instanceof Error ? browserError.message : String(browserError);
-      addDebugLog(debugSessionId, `Browser error: ${errorMessage}`);
-      
-      // As a fallback, return mock results
-      addDebugLog(debugSessionId, "Falling back to mock results due to browser error");
-      
-      const mockResults = [
-        { name: "John Smith (mock)", profileUrl: "https://linkedin.com/in/johnsmith", urn: "johnsmith" },
-        { name: "Jane Doe (mock)", profileUrl: "https://linkedin.com/in/janedoe", urn: "janedoe" },
-        { name: "Bob Johnson (mock)", profileUrl: "https://linkedin.com/in/bobjohnson", urn: "bobjohnson" }
-      ];
-      
-      // Log the mock results
-      addDebugLog(debugSessionId, `Returning ${mockResults.length} mock connections as fallback`);
-      mockResults.forEach((conn, index) => {
-        addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
-      });
-      
-      // Complete the session with a note about fallback
-      completeDebugSession(debugSessionId, "Search completed with mock fallback data");
     }
+    
+    // Check if we can import the puppeteer modules without using them
+    try {
+      addDebugLog(debugSessionId, "Attempting to import Cloudflare puppeteer module");
+      const puppeteerModule = await import('@cloudflare/puppeteer');
+      addDebugLog(debugSessionId, "Successfully imported @cloudflare/puppeteer module");
+      
+      // Log available exports in the module
+      const exportedFunctions = Object.keys(puppeteerModule);
+      addDebugLog(debugSessionId, `Available exports in puppeteer module: ${JSON.stringify(exportedFunctions)}`);
+      
+      // Check if launch function exists
+      if (typeof puppeteerModule.launch === 'function') {
+        addDebugLog(debugSessionId, "launch function exists in puppeteer module");
+      } else {
+        addDebugLog(debugSessionId, "WARNING: launch function does not exist or is not a function");
+      }
+    } catch (importError) {
+      const errorMessage = importError instanceof Error ? importError.message : String(importError);
+      addDebugLog(debugSessionId, `Error importing puppeteer module: ${errorMessage}`);
+      
+      if (importError instanceof Error && importError.stack) {
+        addDebugLog(debugSessionId, `Import error stack: ${importError.stack}`);
+      }
+    }
+    
+    // Instead of using the browser, return mock data
+    addDebugLog(debugSessionId, "Skipping browser launch and returning mock data");
+    
+    const mockResults = [
+      { name: "John Smith (mock)", profileUrl: "https://linkedin.com/in/johnsmith", urn: "johnsmith" },
+      { name: "Jane Doe (mock)", profileUrl: "https://linkedin.com/in/janedoe", urn: "janedoe" },
+      { name: "Bob Johnson (mock)", profileUrl: "https://linkedin.com/in/bobjohnson", urn: "bobjohnson" }
+    ];
+    
+    addDebugLog(debugSessionId, `Returning ${mockResults.length} mock connections`);
+    mockResults.forEach((conn, index) => {
+      addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
+    });
+    
+    // Complete the session
+    addDebugLog(debugSessionId, "Search process completed with diagnostic information");
+    completeDebugSession(debugSessionId, "Browser diagnostics completed");
     
   } catch (error) {
     // Import debug functions if not already imported
