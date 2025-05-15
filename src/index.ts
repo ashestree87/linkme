@@ -42,8 +42,12 @@ export default {
       // Store environment in global context for helpers to use
       (globalThis as any).ENVIRONMENT = env;
       
-      // Admin UI routes
-      if (pathParts.length === 0 || (pathParts.length === 1 && pathParts[0] === 'admin')) {
+      // Admin UI routes - also handle API-like admin paths
+      if (
+        pathParts.length === 0 || 
+        (pathParts.length === 1 && pathParts[0] === 'admin') ||
+        (pathParts.length === 1 && ['search-linkedin', 'search-connections', 'import-connection'].includes(pathParts[0]))
+      ) {
         return await adminHandlers.fetch(request, env);
       }
       
