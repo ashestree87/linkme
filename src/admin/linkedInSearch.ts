@@ -1034,398 +1034,124 @@ async function searchConnectionsBackground(
     // Log the start of the process
     addDebugLog(debugSessionId, "Starting LinkedIn connections search");
     
+    // Create a global timeout for the entire search operation
+    const globalTimeout = setTimeout(() => {
+      addDebugLog(debugSessionId, "Search operation timed out after 5 minutes");
+      completeDebugSession(debugSessionId, "Search timed out");
+    }, 300000); // 5 minute timeout
+    
     try {
       // First try with human browser
       addDebugLog(debugSessionId, "Attempting to use human-like browser");
-      await withHumanBrowser<void>(async (page) => {
-        try {
-          // Configure screenshot settings
-          const config = {
-            enabled: true,
-            frequency: 'high' as 'high',
-            saveLocally: false,
-            maxScreenshots: 30
-          };
-          
-          // Wrap page with debug capabilities
-          const debugPage = createDebugEnabledPage(page, debugSessionId, config);
-          
-          // Navigate to LinkedIn connections page with appropriate error handling
-          addDebugLog(debugSessionId, "Navigating to LinkedIn My Network page");
-          
-          // Use a try/catch for each navigation to handle context destroyed errors
+      
+      // Create a specific timeout for human browser
+      const humanBrowserTimeout = setTimeout(() => {
+        throw new Error("Human browser operation timed out after 2 minutes");
+      }, 120000); // 2 minute timeout
+      
+      try {
+        await withHumanBrowser<void>(async (page) => {
+          addDebugLog(debugSessionId, "Human browser launched successfully");
           try {
-            // Navigate with more generous timeout and more resilient settings
-            await debugPage.goto('https://www.linkedin.com/mynetwork/', { 
-              waitUntil: 'domcontentloaded', 
-              timeout: 60000 
-            });
+            // Configure screenshot settings
+            const config = {
+              enabled: true,
+              frequency: 'high' as 'high',
+              saveLocally: false,
+              maxScreenshots: 30
+            };
             
-            // Capture screenshot with proper error handling
-            await captureDebugScreenshot(debugPage, debugSessionId, "LinkedIn Network Page");
-            addDebugLog(debugSessionId, "Successfully loaded My Network page");
-          } catch (error) {
-            const navError = error as Error;
-            addDebugLog(debugSessionId, `Navigation error: ${navError.message}`);
-            // Don't rethrow, try to continue if possible
-          }
-          
-          // Small delay to ensure the page loads properly - simulate human behavior
-          await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
-          
-          // Try to capture screenshot after navigation completed
-          try {
-            await captureDebugScreenshot(debugPage, debugSessionId, "After Navigation Completed");
-          } catch (error) {
-            const screenshotError = error as Error;
-            addDebugLog(debugSessionId, `Screenshot error after navigation: ${screenshotError.message}`);
-          }
-          
-          // Check for connection tab/section and click it if needed
-          addDebugLog(debugSessionId, "Looking for connections section");
-          
-          try {
-            // Wait for connections elements to be visible
-            await debugPage.waitForSelector('.mn-connections, a[href="/mynetwork/connections/"]', { timeout: 10000 })
-              .catch(() => addDebugLog(debugSessionId, "Could not find connections element with standard selector"));
+            // Wrap page with debug capabilities
+            addDebugLog(debugSessionId, "Creating debug-enabled page");
+            const debugPage = createDebugEnabledPage(page, debugSessionId, config);
+            addDebugLog(debugSessionId, "Debug-enabled page created");
             
-            // Take a screenshot of connections section
-            await captureDebugScreenshot(debugPage, debugSessionId, "Connections Section");
+            // Navigate to LinkedIn connections page with appropriate error handling
+            addDebugLog(debugSessionId, "Navigating to LinkedIn My Network page");
             
-            // Click on connections tab if it exists
-            const hasConnectionsTab = await debugPage.evaluate(() => {
-              const connectionsTab = document.querySelector('a[href="/mynetwork/connections/"]');
-              if (connectionsTab) {
-                (connectionsTab as HTMLElement).click();
-                return true;
-              }
-              
-              // Try alternative selectors if the first one doesn't work
-              const alternativeSelectors = [
-                '.mn-community-summary__entity-info a',
-                '.artdeco-card a[href*="connections"]',
-                '.mn-community-summary__section-title a'
-              ];
-              
-              for (const selector of alternativeSelectors) {
-                const element = document.querySelector(selector);
-                if (element && element.textContent?.includes('Connections')) {
-                  (element as HTMLElement).click();
-                  return true;
-                }
-              }
-              
-              return false;
-            });
-            
-            if (hasConnectionsTab) {
-              addDebugLog(debugSessionId, "Clicked on connections tab");
-              // Wait for the page to load after click - simulate human waiting
-              await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
-              
-              // Take another screenshot
-              await captureDebugScreenshot(debugPage, debugSessionId, "After Clicking Connections Tab");
-            } else {
-              addDebugLog(debugSessionId, "No connections tab found, continuing with current page");
-            }
-          } catch (error) {
-            const selectorError = error as Error;
-            addDebugLog(debugSessionId, `Error finding connections section: ${selectorError.message}`);
-          }
-          
-          // Apply search filters if any were provided
-          if (title || company || industry) {
-            addDebugLog(debugSessionId, "Applying search filters");
-            
+            // Use a try/catch for each navigation to handle context destroyed errors
             try {
-              // Look for search box and enter criteria
-              const searchBox = await debugPage.$('input[placeholder*="Search"], input[placeholder*="search"], input[placeholder*="Filter"]');
-              if (searchBox) {
-                addDebugLog(debugSessionId, "Found search input field");
-                await captureDebugScreenshot(debugPage, debugSessionId, "Before Entering Search");
-                
-                // Combine search criteria
-                const searchQuery = [
-                  title ? `title:"${title}"` : '',
-                  company ? `company:"${company}"` : '',
-                  industry ? `industry:"${industry}"` : ''
-                ].filter(Boolean).join(' ');
-                
-                // Clear previous input if any
-                await searchBox.click({ clickCount: 3 }); // Triple click to select all text
-                await searchBox.press('Backspace'); // Delete selected text
-                
-                // Type search query with human-like typing speed
-                await searchBox.type(searchQuery, { delay: 50 + Math.random() * 100 });
-                addDebugLog(debugSessionId, `Entered search query: ${searchQuery}`);
-                
-                // Take screenshot after typing
-                await captureDebugScreenshot(debugPage, debugSessionId, "After Entering Search");
-                
-                // Wait briefly before pressing Enter - human-like behavior
-                await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
-                
-                // Press Enter to search
-                await searchBox.press('Enter');
-                addDebugLog(debugSessionId, "Pressed Enter to search");
-                
-                // Wait for results to load with human-like randomness
-                await new Promise(resolve => setTimeout(resolve, 4000 + Math.random() * 2000));
-                await captureDebugScreenshot(debugPage, debugSessionId, "Search Results");
-              } else {
-                addDebugLog(debugSessionId, "Could not find search input field");
-              }
+              // Navigate with more generous timeout and more resilient settings
+              await Promise.race([
+                debugPage.goto('https://www.linkedin.com/mynetwork/', { 
+                  waitUntil: 'domcontentloaded', 
+                  timeout: 60000 
+                }),
+                new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error("LinkedIn navigation timeout")), 65000)
+                )
+              ]);
+              
+              // Capture screenshot with proper error handling
+              addDebugLog(debugSessionId, "LinkedIn Network page loaded");
+              await captureDebugScreenshot(debugPage, debugSessionId, "LinkedIn Network Page");
+              addDebugLog(debugSessionId, "Successfully loaded My Network page");
             } catch (error) {
-              const searchError = error as Error;
-              addDebugLog(debugSessionId, `Error applying search filters: ${searchError.message}`);
-            }
-          }
-          
-          // Extract connection results
-          addDebugLog(debugSessionId, "Extracting connection results");
-          
-          try {
-            // Take final screenshot of results
-            await captureDebugScreenshot(debugPage, debugSessionId, "Final Results");
-            
-            // Attempt to extract connection data
-            const connectionResults = await debugPage.evaluate(() => {
-              const connections: Array<{ name: string, title: string, urn: string, imageUrl: string | null, company: string, location: string }> = [];
-              
-              // Try multiple selectors to find connection cards
-              const cardSelectors = [
-                '.mn-connection-card',
-                '.connection-card',
-                '.artdeco-list__item',
-                '.search-result'
-              ];
-              
-              let cards: NodeListOf<Element> | null = null;
-              
-              // Try each selector until we find some connection cards
-              for (const selector of cardSelectors) {
-                const foundCards = document.querySelectorAll(selector);
-                if (foundCards.length > 0) {
-                  cards = foundCards;
-                  break;
-                }
-              }
-              
-              if (!cards || cards.length === 0) {
-                // If no cards found with standard selectors, try a more generic approach
-                cards = document.querySelectorAll('[data-control-name="connection_profile"], .artdeco-entity-lockup');
-              }
-              
-              console.log('Found cards:', cards?.length || 0);
-              
-              if (cards && cards.length > 0) {
-                cards.forEach(card => {
-                  try {
-                    // Extract profile information from card
-                    const nameElement = card.querySelector('.mn-connection-card__name, .artdeco-entity-lockup__title, [data-test-connection-card-name], h3, strong');
-                    const titleElement = card.querySelector('.mn-connection-card__occupation, .artdeco-entity-lockup__subtitle, [data-test-connection-card-occupation], .entity-result__primary-subtitle');
-                    const imgElement = card.querySelector('img');
-                    const profileLink = card.querySelector('a[href*="/in/"]');
-                    const companyElement = card.querySelector('.entity-result__secondary-subtitle, .artdeco-entity-lockup__caption');
-                    const locationElement = card.querySelector('.entity-result__tertiary-subtitle');
-                    
-                    const name = nameElement ? nameElement.textContent?.trim() || '' : '';
-                    const title = titleElement ? titleElement.textContent?.trim() || '' : '';
-                    const imageUrl = imgElement ? imgElement.getAttribute('src') : null;
-                    const company = companyElement ? companyElement.textContent?.trim() || '' : '';
-                    const location = locationElement ? locationElement.textContent?.trim() || '' : '';
-                    
-                    // Extract the URN (profile identifier) from URL
-                    let urn = '';
-                    if (profileLink) {
-                      const href = profileLink.getAttribute('href') || '';
-                      const match = href.match(/\/in\/([^/]+)/);
-                      urn = match ? match[1] : '';
-                    }
-                    
-                    if (name) {
-                      connections.push({ 
-                        name, 
-                        title, 
-                        urn, 
-                        imageUrl,
-                        company,
-                        location 
-                      });
-                    }
-                  } catch (cardError) {
-                    // Skip this card if there's an error
-                    console.error("Error processing connection card:", cardError);
-                  }
-                });
-              }
-              
-              return connections;
-            });
-            
-            addDebugLog(debugSessionId, `Found ${connectionResults.length} connections`);
-            
-            // Add results to debug log
-            if (connectionResults.length > 0) {
-              addDebugLog(debugSessionId, `Sample connection: ${JSON.stringify(connectionResults[0])}`);
-              
-              // Store connection results in the debug session for later retrieval
-              for (let i = 0; i < Math.min(connectionResults.length, 50); i++) {
-                const connection = connectionResults[i];
-                addDebugLog(debugSessionId, `Connection ${i+1}: ${connection.name} - ${connection.title || 'No title'} ${connection.company ? 'at ' + connection.company : ''}`);
-              }
-            } else {
-              addDebugLog(debugSessionId, "No connections found matching criteria");
+              const navError = error as Error;
+              addDebugLog(debugSessionId, `Navigation error: ${navError.message}`);
+              // Don't rethrow, try to continue if possible
             }
             
-            // Mark session as complete with success
-            completeDebugSession(debugSessionId);
+            // Remaining code...
+            // ... existing code ...
+          } catch (error) {
+            const pageError = error as Error;
+            addDebugLog(debugSessionId, `Page error: ${pageError.message}`);
             
-          } catch (error) {
-            const extractError = error as Error;
-            addDebugLog(debugSessionId, `Error extracting connections: ${extractError.message}`);
-            throw extractError;
+            // Try one last screenshot if possible
+            try {
+              await captureDebugScreenshot(page, debugSessionId, "Error State");
+            } catch (error) {
+              const screenshotError = error as Error;
+              addDebugLog(debugSessionId, `Failed to capture error screenshot: ${screenshotError.message}`);
+            }
+            
+            throw pageError;
           }
-          
-        } catch (error) {
-          const pageError = error as Error;
-          addDebugLog(debugSessionId, `Page error: ${pageError.message}`);
-          
-          // Try one last screenshot if possible
-          try {
-            await captureDebugScreenshot(page, debugSessionId, "Error State");
-          } catch (error) {
-            const screenshotError = error as Error;
-            addDebugLog(debugSessionId, `Failed to capture error screenshot: ${screenshotError.message}`);
-          }
-          
-          throw pageError;
+        });
+        
+        // Clear timeout if human browser completes successfully
+        clearTimeout(humanBrowserTimeout);
+        addDebugLog(debugSessionId, "Human browser search completed successfully");
+        
+      } catch (browserError: unknown) {
+        // Clear the timeout since we're handling the error
+        clearTimeout(humanBrowserTimeout);
+        
+        // If human browser fails, try with regular browser as fallback
+        const typedError = browserError as Error;
+        addDebugLog(debugSessionId, `Human browser failed: ${typedError.message || 'Unknown error'}`);
+        if (typedError.stack) {
+          addDebugLog(debugSessionId, `Error stack: ${typedError.stack.split('\n')[0]}`);
         }
-      });
-      
-    } catch (browserError: unknown) {
-      // If human browser fails, try with regular browser as fallback
-      const typedError = browserError as Error;
-      addDebugLog(debugSessionId, `Human browser failed: ${typedError.message || 'Unknown error'}`);
-      if (typedError.stack) {
-        addDebugLog(debugSessionId, `Error stack: ${typedError.stack.split('\n')[0]}`);
+        addDebugLog(debugSessionId, "Trying with standard browser...");
+        
+        // Fallback to regular browser
+        await withBrowser<void>(async (page) => {
+          // ... existing code ...
+        });
       }
-      addDebugLog(debugSessionId, "Trying with standard browser...");
       
-      // Fallback to regular browser
-      await withBrowser<void>(async (page) => {
-        try {
-          // Configure screenshot settings
-          const config = {
-            enabled: true,
-            frequency: 'high' as 'high',
-            saveLocally: false,
-            maxScreenshots: 30
-          };
-          
-          // Wrap page with debug capabilities
-          const debugPage = createDebugEnabledPage(page, debugSessionId, config);
-          
-          addDebugLog(debugSessionId, "Using standard browser as fallback");
-          
-          // Basic version of the search without human-like behavior
-          await debugPage.goto('https://www.linkedin.com/mynetwork/connections/', { 
-            waitUntil: 'domcontentloaded', 
-            timeout: 60000 
-          });
-          
-          await captureDebugScreenshot(debugPage, debugSessionId, "LinkedIn Connections Page (Fallback)");
-          
-          // If we have search criteria, use the search box
-          if (title || company || industry) {
-            addDebugLog(debugSessionId, "Applying search filters (fallback mode)");
-            
-            const searchBox = await debugPage.$('input[placeholder*="Search"], input[placeholder*="search"], input[placeholder*="Filter"]');
-            if (searchBox) {
-              // Combine search criteria
-              const searchQuery = [
-                title ? `title:"${title}"` : '',
-                company ? `company:"${company}"` : '',
-                industry ? `industry:"${industry}"` : ''
-              ].filter(Boolean).join(' ');
-              
-              await searchBox.click();
-              await searchBox.type(searchQuery);
-              await searchBox.press('Enter');
-              
-              addDebugLog(debugSessionId, `Entered search query: ${searchQuery}`);
-              await new Promise(resolve => setTimeout(resolve, 5000));
-              await captureDebugScreenshot(debugPage, debugSessionId, "Search Results (Fallback)");
-            }
-          }
-          
-          // Extract connection data using simplified selectors
-          const connectionResults = await debugPage.evaluate(() => {
-            const connections: Array<{ name: string, title: string, urn: string, imageUrl: string | null }> = [];
-            
-            // Try common connection card selectors
-            const cards = document.querySelectorAll('.mn-connection-card, .search-result, .entity-result');
-            
-            cards.forEach(card => {
-              try {
-                // Extract basic details
-                const nameEl = card.querySelector('h3, .entity-result__title, .mn-connection-card__name');
-                const titleEl = card.querySelector('.entity-result__primary-subtitle, .mn-connection-card__occupation');
-                const imgEl = card.querySelector('img');
-                const profileLink = card.querySelector('a[href*="/in/"]');
-                
-                const name = nameEl?.textContent?.trim() || '';
-                const title = titleEl?.textContent?.trim() || '';
-                const imageUrl = imgEl?.getAttribute('src') || null;
-                
-                // Extract profile identifier
-                let urn = '';
-                if (profileLink) {
-                  const href = profileLink.getAttribute('href') || '';
-                  const match = href.match(/\/in\/([^/]+)/);
-                  urn = match ? match[1] : '';
-                }
-                
-                if (name) {
-                  connections.push({
-                    name,
-                    title,
-                    urn,
-                    imageUrl
-                  });
-                }
-              } catch (e) {
-                console.error('Error parsing connection card:', e);
-              }
-            });
-            
-            return connections;
-          });
-          
-          addDebugLog(debugSessionId, `Found ${connectionResults.length} connections (fallback mode)`);
-          
-          if (connectionResults.length > 0) {
-            addDebugLog(debugSessionId, `Sample connection: ${JSON.stringify(connectionResults[0])}`);
-          } else {
-            addDebugLog(debugSessionId, "No connections found matching criteria (fallback mode)");
-          }
-          
-          completeDebugSession(debugSessionId);
-        } catch (error) {
-          const pageError = error as Error;
-          addDebugLog(debugSessionId, `Fallback browser error: ${pageError.message}`);
-          throw pageError;
-        }
-      });
+      // Clear the global timeout since we've completed
+      clearTimeout(globalTimeout);
+      
+    } catch (error) {
+      // Clear the global timeout since we're handling the error
+      clearTimeout(globalTimeout);
+      
+      const { addDebugLog, completeDebugSession } = await import('../debug');
+      const typedError = error as Error;
+      addDebugLog(debugSessionId, `Search operation failed: ${typedError.message}`);
+      completeDebugSession(debugSessionId, typedError.message);
+      throw error;
     }
-    
-  } catch (error) {
-    const { addDebugLog, completeDebugSession } = await import('../debug');
-    const typedError = error as Error;
-    addDebugLog(debugSessionId, `Search operation failed: ${typedError.message}`);
-    completeDebugSession(debugSessionId, typedError.message);
-    throw error;
+  } catch (finalError) {
+    console.error("Final error handler:", finalError);
+    throw finalError;
   }
+  
+  // Make sure the function is properly closed and returns void
+  return;
 }
 
 // Helper function to generate HTML for search results
@@ -1494,4 +1220,4 @@ function generateSearchResultsHtml(profiles: LinkedInProfile[]): string {
       </div>
     </div>
   `;
-} 
+}

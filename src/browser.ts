@@ -119,6 +119,13 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
     throw new Error("LinkedIn credentials are not configured. Please check environment variables.");
   }
   
+  // Create global timeout protection
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error("Human browser operation timed out after 2 minutes"));
+    }, 120000); // 2 minute global timeout
+  });
+  
   // Launch browser directly like in withBrowser, don't try to modify launch options
   console.log("Launching human-like browser...");
   let browser;
@@ -133,9 +140,12 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
 
   try {
     // Create page with more timeout
+    console.log("Creating new page...");
     const page = await browser.newPage();
+    console.log("Page created successfully");
     
     // Set JavaScript flags to appear more like a real browser
+    console.log("Setting browser fingerprint evasions...");
     await page.evaluateOnNewDocument(() => {
       // Override the navigator properties
       Object.defineProperty(navigator, 'webdriver', {
@@ -178,6 +188,7 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
     });
     
     // Choose a random viewport from common sizes
+    console.log("Setting viewport...");
     const viewports = [
       { width: 1366 + Math.floor(Math.random() * 20), height: 768 + Math.floor(Math.random() * 20) },
       { width: 1440 + Math.floor(Math.random() * 20), height: 900 + Math.floor(Math.random() * 20) },
@@ -188,9 +199,12 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
     
     const selectedViewport = viewports[Math.floor(Math.random() * viewports.length)];
     await page.setViewport(selectedViewport);
+    console.log("Viewport set successfully");
+    
     await randomHumanDelay(500, 1000);
     
     // Set random user agent from a pool of real browser user agents
+    console.log("Setting user agent...");
     const userAgents = [
       env.USERAGENT, // Use the provided one most of the time
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -204,12 +218,14 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
       userAgents[Math.floor(Math.random() * userAgents.length)];
     
     await page.setUserAgent(selectedUserAgent);
+    console.log("User agent set successfully");
     
     // Set default navigation timeout to be variable (like humans have different patience levels)
     const timeoutVariation = Math.floor(Math.random() * 10000);
     page.setDefaultNavigationTimeout(60000 + timeoutVariation);
     
     // Add randomized headers
+    console.log("Setting HTTP headers...");
     const languages = ['en-US,en;q=0.9', 'en-US,en;q=0.8,es;q=0.3', 'en-GB,en;q=0.9,en-US;q=0.8'];
     await page.setExtraHTTPHeaders({
       'Accept-Language': languages[Math.floor(Math.random() * languages.length)],
@@ -221,8 +237,10 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
       'Sec-Fetch-User': '?1',
       'Upgrade-Insecure-Requests': '1'
     });
+    console.log("HTTP headers set successfully");
     
     // Set LinkedIn cookies with some randomness in the timing
+    console.log("Setting cookies...");
     await randomHumanDelay(300, 800);
     
     // Set cookies in a more natural way (not all at once)
@@ -265,19 +283,23 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
         secure: true,
       }
     );
+    console.log("Cookies set successfully");
     
     // First navigate to LinkedIn homepage with human behavior
+    console.log("Navigating to LinkedIn homepage with human-like behavior...");
     try {
-      console.log("Navigating to LinkedIn homepage...");
-      
       // Navigate with variable timing for loading
       const waitUntilOptions = ['domcontentloaded', 'networkidle0', 'networkidle2'];
       const randomWaitOption = waitUntilOptions[Math.floor(Math.random() * 1)]; // Mostly use domcontentloaded
       
-      await page.goto('https://www.linkedin.com/', { 
-        waitUntil: randomWaitOption as any,
-        timeout: 60000 + timeoutVariation
-      });
+      await Promise.race([
+        page.goto('https://www.linkedin.com/', { 
+          waitUntil: randomWaitOption as any,
+          timeout: 60000 + timeoutVariation
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Navigation timeout")), 70000))
+      ]);
+      console.log("LinkedIn homepage navigation completed");
       
       // We'll do basic simple reading simulation here to avoid circular dependency
       // We can't import from human-behavior as that would create a circular dependency
@@ -287,6 +309,7 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
       await delay(readingTime);
       
       // Small scroll to simulate reading progress
+      console.log("Simulating human reading behavior...");
       const smallScrollDistance = Math.floor(Math.random() * 50) + 10;
       await page.evaluate((distance: number) => {
         window.scrollBy(0, distance);
@@ -305,6 +328,7 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
         const selector = interactionSelectors[Math.floor(Math.random() * interactionSelectors.length)];
         
         try {
+          console.log("Attempting random interaction with element:", selector);
           const buttonExists = await page.$(selector);
           
           if (buttonExists) {
@@ -325,12 +349,22 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
       console.warn("Initial LinkedIn navigation warning (continuing anyway):", navError);
     }
     
-    // Execute the provided function
-    return await fn(page);
+    console.log("Executing user-provided function...");
+    // Execute the provided function with timeout protection
+    return await Promise.race([
+      fn(page),
+      timeoutPromise
+    ]);
   } finally {
     // Close browser with slight delay like a human would
-    await randomHumanDelay(800, 1500);
-    await browser.close();
+    try {
+      console.log("Closing human-like browser...");
+      await randomHumanDelay(300, 600);
+      await browser.close();
+      console.log("Human-like browser closed successfully");
+    } catch (closeError) {
+      console.error("Error closing human-like browser:", closeError);
+    }
   }
 }
 
