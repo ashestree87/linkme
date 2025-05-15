@@ -58,6 +58,58 @@ export default {
         });
       }
       
+      // LinkedIn authentication test endpoint
+      if (pathParts.length === 1 && pathParts[0] === 'linkedin-test') {
+        const { verifyLinkedInAuth } = await import('./common');
+        const authStatus = await verifyLinkedInAuth();
+        
+        return new Response(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>LinkedIn Auth Test</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+          </head>
+          <body class="bg-gray-100 p-8">
+            <div class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl p-6">
+              <h1 class="text-xl font-bold mb-4">LinkedIn Authentication Test</h1>
+              
+              <div class="mb-4 p-4 rounded-md ${authStatus.isValid ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}">
+                <p class="font-medium ${authStatus.isValid ? 'text-green-700' : 'text-red-700'}">${authStatus.isValid ? '✅ Authentication Working' : '❌ Authentication Failed'}</p>
+                <p class="text-sm mt-1 ${authStatus.isValid ? 'text-green-600' : 'text-red-600'}">${authStatus.message}</p>
+              </div>
+              
+              <div class="mt-6">
+                <h2 class="text-lg font-semibold mb-2">LinkedIn Credentials</h2>
+                <div class="bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <p><strong>LI_AT Cookie:</strong> ${env.LI_AT ? '***' + env.LI_AT.substr(-5) : 'Not set'}</p>
+                  <p><strong>CSRF Token:</strong> ${env.CSRF ? '***' + env.CSRF.substr(-5) : 'Not set'}</p>
+                  <p><strong>User Agent:</strong> ${env.USERAGENT ? 'Set' : 'Not set'}</p>
+                </div>
+                
+                <div class="mt-4 text-sm text-gray-600">
+                  <p class="mb-2"><strong>How to update LinkedIn credentials:</strong></p>
+                  <ol class="list-decimal pl-5 space-y-1">
+                    <li>Log in to LinkedIn in your browser</li>
+                    <li>Open Developer Tools (F12 or Right-click > Inspect)</li>
+                    <li>Go to the Application tab > Cookies > linkedin.com</li>
+                    <li>Find the 'li_at' cookie and copy its value to your environment variable</li>
+                    <li>Find the 'JSESSIONID' cookie (with quotes) and copy its value to your CSRF variable</li>
+                    <li>Update your wrangler.toml or environment settings with these values</li>
+                    <li>Redeploy your worker</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </body>
+          </html>
+        `, {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+      
       // API and other endpoints
       // TODO: Implement other endpoints here
       

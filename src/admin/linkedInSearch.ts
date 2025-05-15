@@ -1,5 +1,5 @@
 import { AdminEnv, LinkedInProfile } from './types';
-import { withBrowser } from '../common';
+import { withBrowser, verifyLinkedInAuth } from '../common';
 
 /**
  * Generate the connections view UI
@@ -306,6 +306,22 @@ export async function handleLinkedInSearch(request: Request, env: AdminEnv): Pro
     const location = (formData.get('location') as string) || '';
     const industry = (formData.get('industry') as string) || '';
     
+    console.log('LinkedIn search requested with params:', { keywords, location, industry });
+    
+    // Verify LinkedIn auth first
+    const authCheck = await verifyLinkedInAuth();
+    if (!authCheck.isValid) {
+      return new Response(`
+        <div class="bg-white shadow-md rounded-lg p-6 border border-red-200">
+          <h2 class="text-xl font-semibold mb-4 text-red-600">Authentication Error</h2>
+          <p class="text-gray-700 mb-4">${authCheck.message}</p>
+          <p class="text-sm text-gray-500">Please update your LinkedIn credentials in your environment variables and try again.</p>
+        </div>
+      `, {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+    
     // Search LinkedIn
     const profiles = await searchLinkedInUsers(env, keywords, location, industry);
     
@@ -443,8 +459,9 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
     
     console.log('Searching connections with:', { title, company, industry });
     
-    // If LinkedIn credentials are not configured, return an error
-    if (!env.LI_AT || !env.CSRF || !env.USERAGENT) {
+    // Verify LinkedIn auth first
+    const authCheck = await verifyLinkedInAuth();
+    if (!authCheck.isValid) {
       return new Response(`
         <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
           <div class="flex">
@@ -455,7 +472,7 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
             </div>
             <div class="ml-3">
               <p class="text-sm leading-5 text-red-700">
-                LinkedIn credentials not configured. Please add LI_AT, CSRF, and USERAGENT environment variables.
+                ${authCheck.message}
               </p>
             </div>
           </div>
@@ -467,84 +484,184 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
     
     // Use browser to search for connections
     const results = await withBrowser(async (page) => {
-      // Go to LinkedIn network page where connections are listed
-      await page.goto('https://www.linkedin.com/mynetwork/invite-connect/connections/', { 
-        waitUntil: 'networkidle0' 
-      });
-      
-      // Wait for connections to load
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Extract connections that match our criteria
-      return await page.evaluate((searchTitle, searchCompany, searchIndustry) => {
-        const results: Array<{
-          urn: string;
-          name: string;
-          title: string;
-          company: string;
-          location: string;
-          imageUrl: string | null;
-        }> = [];
-        const connectionCards = document.querySelectorAll('.mn-connection-card');
-        
-        // Convert NodeList to Array to avoid iterator issues
-        Array.from(connectionCards).forEach(card => {
-          try {
-            // Extract basic info
-            const nameEl = card.querySelector('.mn-connection-card__name');
-            const occupationEl = card.querySelector('.mn-connection-card__occupation');
-            const imageEl = card.querySelector('.presence-entity__image');
-            
-            if (!nameEl || !occupationEl) return;
-            
-            const name = nameEl.textContent?.trim() || '';
-            const occupation = occupationEl.textContent?.trim() || '';
-            const imageUrl = imageEl ? (imageEl as HTMLImageElement).src : null;
-            
-            // Extract profile link to get URN
-            const linkEl = card.querySelector('.mn-connection-card__link');
-            const profileUrl = linkEl ? (linkEl as HTMLAnchorElement).href : '';
-            
-            // Extract URN from URL if possible
-            let urn = '';
-            const urlParts = profileUrl.split('/');
-            if (urlParts.length > 0) {
-              urn = urlParts[urlParts.length - 1] || urlParts[urlParts.length - 2] || '';
-            }
-            
-            // Parse occupation into title and company
-            let title = occupation;
-            let company = '';
-            
-            if (occupation.includes(' at ')) {
-              const parts = occupation.split(' at ');
-              title = parts[0].trim();
-              company = parts[1].trim();
-            }
-            
-            // Filter based on search criteria
-            const matchesTitle = !searchTitle || title.toLowerCase().includes(searchTitle.toLowerCase());
-            const matchesCompany = !searchCompany || company.toLowerCase().includes(searchCompany.toLowerCase());
-            // We don't have industry info in the connections list, so skip this filter if it's provided
-            const matchesIndustry = !searchIndustry;
-            
-            if (matchesTitle && matchesCompany && matchesIndustry) {
-              results.push({
-                urn,
-                name,
-                title,
-                company,
-                location: '',  // Location isn't available in the connections list
-                imageUrl
-              });
-            }
-          } catch (e) {
-            console.error('Error parsing connection card:', e);
-          }
+      try {
+        // Go to LinkedIn network page where connections are listed
+        await page.goto('https://www.linkedin.com/mynetwork/invite-connect/connections/', { 
+          waitUntil: 'networkidle0',
+          timeout: 45000 
         });
         
-        return results;
-      }, title, company, industry);
+        // Wait for connections to load
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Extract connections that match our criteria
+        return await page.evaluate((searchTitle, searchCompany, searchIndustry) => {
+          const results: Array<{
+            urn: string;
+            name: string;
+            title: string;
+            company: string;
+            location: string;
+            imageUrl: string | null;
+          }> = [];
+          const connectionCards = document.querySelectorAll('.mn-connection-card');
+          
+          console.log("Found connection cards:", connectionCards.length);
+          
+          // Convert NodeList to Array to avoid iterator issues
+          Array.from(connectionCards).forEach(card => {
+            try {
+              // Extract basic info
+              const nameEl = card.querySelector('.mn-connection-card__name');
+              const occupationEl = card.querySelector('.mn-connection-card__occupation');
+              const imageEl = card.querySelector('.presence-entity__image');
+              
+              if (!nameEl || !occupationEl) return;
+              
+              const name = nameEl.textContent?.trim() || '';
+              const occupation = occupationEl.textContent?.trim() || '';
+              const imageUrl = imageEl ? (imageEl as HTMLImageElement).src : null;
+              
+              // Extract profile link to get URN
+              const linkEl = card.querySelector('.mn-connection-card__link');
+              const profileUrl = linkEl ? (linkEl as HTMLAnchorElement).href : '';
+              
+              // Extract URN from URL if possible
+              let urn = '';
+              const urlParts = profileUrl.split('/');
+              if (urlParts.length > 0) {
+                urn = urlParts[urlParts.length - 1] || urlParts[urlParts.length - 2] || '';
+              }
+              
+              // Parse occupation into title and company
+              let title = occupation;
+              let company = '';
+              
+              if (occupation.includes(' at ')) {
+                const parts = occupation.split(' at ');
+                title = parts[0].trim();
+                company = parts[1].trim();
+              }
+              
+              // Filter based on search criteria
+              const matchesTitle = !searchTitle || title.toLowerCase().includes(searchTitle.toLowerCase());
+              const matchesCompany = !searchCompany || company.toLowerCase().includes(searchCompany.toLowerCase());
+              // We don't have industry info in the connections list, so skip this filter if it's provided
+              const matchesIndustry = !searchIndustry;
+              
+              if (matchesTitle && matchesCompany && matchesIndustry) {
+                results.push({
+                  urn,
+                  name,
+                  title,
+                  company,
+                  location: '',  // Location isn't available in the connections list
+                  imageUrl
+                });
+              }
+            } catch (e) {
+              console.error('Error parsing connection card:', e);
+            }
+          });
+          
+          return results;
+        }, title, company, industry);
+      } catch (error) {
+        console.error("LinkedIn connection search navigation error:", error);
+        // Try alternative approach to fetch connections
+        try {
+          // Go to main connections page
+          await page.goto('https://www.linkedin.com/connections/connections-i-have/', {
+            waitUntil: 'networkidle0',
+            timeout: 45000
+          });
+          
+          await page.waitForSelector('.mn-connections__search-input', {timeout: 10000});
+          
+          // If there's a search box, try to use it
+          if (title || company) {
+            // Type search query
+            const searchQuery = [title, company].filter(Boolean).join(' ');
+            await page.type('.mn-connections__search-input', searchQuery);
+            await page.keyboard.press('Enter');
+            
+            // Wait for search results to load
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+          
+          // Extract the connections using the same code as above
+          return await page.evaluate((searchTitle, searchCompany) => {
+            const results: Array<{
+              urn: string;
+              name: string;
+              title: string;
+              company: string;
+              location: string;
+              imageUrl: string | null;
+            }> = [];
+            
+            // Look for connection cards
+            const cards = document.querySelectorAll('.mn-connection-card');
+            
+            Array.from(cards).forEach(card => {
+              try {
+                // Same extraction logic as before
+                const nameEl = card.querySelector('.mn-connection-card__name');
+                const occupationEl = card.querySelector('.mn-connection-card__occupation');
+                const imageEl = card.querySelector('.presence-entity__image');
+                
+                if (!nameEl || !occupationEl) return;
+                
+                const name = nameEl.textContent?.trim() || '';
+                const occupation = occupationEl.textContent?.trim() || '';
+                const imageUrl = imageEl ? (imageEl as HTMLImageElement).src : null;
+                
+                // Extract URN from link
+                const linkEl = card.querySelector('a');
+                const profileUrl = linkEl ? linkEl.href : '';
+                
+                let urn = '';
+                if (profileUrl) {
+                  const match = profileUrl.match(/\/in\/([^\/]+)/);
+                  urn = match ? match[1] : '';
+                }
+                
+                // Parse occupation
+                let title = occupation;
+                let company = '';
+                
+                if (occupation.includes(' at ')) {
+                  const parts = occupation.split(' at ');
+                  title = parts[0].trim();
+                  company = parts[1].trim();
+                }
+                
+                // Only add if it matches filters
+                const matchesTitle = !searchTitle || title.toLowerCase().includes(searchTitle.toLowerCase());
+                const matchesCompany = !searchCompany || company.toLowerCase().includes(searchCompany.toLowerCase());
+                
+                if (matchesTitle && matchesCompany) {
+                  results.push({
+                    urn,
+                    name,
+                    title,
+                    company,
+                    location: '',
+                    imageUrl
+                  });
+                }
+              } catch (e) {
+                console.error('Error parsing connection card:', e);
+              }
+            });
+            
+            return results;
+          }, title, company);
+        } catch (fallbackError) {
+          console.error("Even fallback connection search failed:", fallbackError);
+          throw new Error("Failed to access LinkedIn connections. Please check your authentication cookies.");
+        }
+      }
     });
     
     console.log(`Found ${results.length} matching connections`);
