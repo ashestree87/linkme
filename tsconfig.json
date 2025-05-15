@@ -42,7 +42,6 @@
 		"skipLibCheck": true,
 		"types": [
 			"node",
-			"worker-configuration.d.ts",
 			"@cloudflare/workers-types"
 		],
 		"noImplicitAny": true,
