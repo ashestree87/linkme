@@ -15,7 +15,16 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
   }
   
   // Use the browser binding directly
-  const browser = await launch(env.CRAWLER_BROWSER);
+  console.log("Launching standard browser...");
+  let browser;
+  
+  try {
+    browser = await launch(env.CRAWLER_BROWSER);
+    console.log("Standard browser launched successfully");
+  } catch (launchError) {
+    console.error("Error launching standard browser:", launchError);
+    throw launchError;
+  }
 
   try {
     // Create page with more timeout
@@ -110,16 +119,17 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
     throw new Error("LinkedIn credentials are not configured. Please check environment variables.");
   }
   
-  // Launch browser with additional human-like settings
-  const browser = await launch({
-    ...env.CRAWLER_BROWSER,
-    args: [
-      // Safely check if args exists and is an array before spreading
-      ...(env.CRAWLER_BROWSER && Array.isArray(env.CRAWLER_BROWSER.args) ? env.CRAWLER_BROWSER.args : []),
-      '--disable-blink-features=AutomationControlled', // Hide automation
-      '--disable-features=IsolateOrigins,site-per-process' // Disable site isolation
-    ]
-  });
+  // Launch browser directly like in withBrowser, don't try to modify launch options
+  console.log("Launching human-like browser...");
+  let browser;
+  
+  try {
+    browser = await launch(env.CRAWLER_BROWSER);
+    console.log("Human-like browser launched successfully");
+  } catch (launchError) {
+    console.error("Error launching human-like browser:", launchError);
+    throw launchError;
+  }
 
   try {
     // Create page with more timeout

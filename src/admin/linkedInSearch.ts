@@ -483,8 +483,15 @@ export async function searchLinkedInUsers(env: AdminEnv, keywords: string, locat
       });
     } catch (humanBrowserError: unknown) {
       // If human browser fails, fall back to regular browser
-      console.warn('Human browser search failed, falling back to standard browser:', 
-                  humanBrowserError instanceof Error ? humanBrowserError.message : 'Unknown error');
+      const errorMessage = humanBrowserError instanceof Error ? 
+        humanBrowserError.message : 
+        'Unknown error';
+      
+      console.warn('Human browser search failed, falling back to standard browser:', errorMessage);
+      
+      if (humanBrowserError instanceof Error && humanBrowserError.stack) {
+        console.warn('Error stack:', humanBrowserError.stack.split('\n')[0]);
+      }
       
       return await withBrowser(async (page) => {
         console.log('Retrying with standard browser...');
@@ -1029,6 +1036,7 @@ async function searchConnectionsBackground(
     
     try {
       // First try with human browser
+      addDebugLog(debugSessionId, "Attempting to use human-like browser");
       await withHumanBrowser<void>(async (page) => {
         try {
           // Configure screenshot settings
@@ -1298,7 +1306,11 @@ async function searchConnectionsBackground(
     } catch (browserError: unknown) {
       // If human browser fails, try with regular browser as fallback
       const typedError = browserError as Error;
-      addDebugLog(debugSessionId, `Human browser failed: ${typedError.message}. Trying with standard browser...`);
+      addDebugLog(debugSessionId, `Human browser failed: ${typedError.message || 'Unknown error'}`);
+      if (typedError.stack) {
+        addDebugLog(debugSessionId, `Error stack: ${typedError.stack.split('\n')[0]}`);
+      }
+      addDebugLog(debugSessionId, "Trying with standard browser...");
       
       // Fallback to regular browser
       await withBrowser<void>(async (page) => {
