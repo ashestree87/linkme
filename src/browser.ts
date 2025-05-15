@@ -114,7 +114,8 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
   const browser = await launch({
     ...env.CRAWLER_BROWSER,
     args: [
-      ...(env.CRAWLER_BROWSER.args || []),
+      // Safely check if args exists and is an array before spreading
+      ...(env.CRAWLER_BROWSER && Array.isArray(env.CRAWLER_BROWSER.args) ? env.CRAWLER_BROWSER.args : []),
       '--disable-blink-features=AutomationControlled', // Hide automation
       '--disable-features=IsolateOrigins,site-per-process' // Disable site isolation
     ]

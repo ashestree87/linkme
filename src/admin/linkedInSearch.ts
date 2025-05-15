@@ -106,193 +106,461 @@ export async function searchLinkedInUsers(env: AdminEnv, keywords: string, locat
       throw new Error('LinkedIn credentials not configured');
     }
     
-    const results = await withBrowser(async (page) => {
-      // For empty searches, use a default view that shows recent profiles
-      let searchUrl = 'https://www.linkedin.com/sales/search/people?';
-      
-      // Create URL parameters
-      const params = new URLSearchParams();
-      
-      // If all fields are empty, set a default filter to show all leads
-      const allEmpty = !keywords && !location && !industry;
-      
-      if (allEmpty) {
-        // Add parameters to show all leads (recent searches)
-        params.append('viewAllFilters', 'true');
-        params.append('sortCriteria', 'CREATED_TIME');
-      } else {
-        // Add any non-empty filters
-        if (keywords) {
-          params.append('keywords', keywords);
-        }
+    try {
+      // First try with human-like browser
+      console.log('Attempting LinkedIn search with human-like browser...');
+      return await withHumanBrowser(async (page) => {
+        // For empty searches, use a default view that shows recent profiles
+        let searchUrl = 'https://www.linkedin.com/sales/search/people?';
         
-        if (location) {
-          params.append('geoIncluded', location);
-        }
+        // Create URL parameters
+        const params = new URLSearchParams();
         
-        if (industry) {
-          params.append('industryIncluded', industry);
-        }
-      }
-      
-      // Add parameters to the URL
-      searchUrl += params.toString();
-      
-      console.log('Searching LinkedIn with URL:', searchUrl);
-      
-      // Navigate to search URL
-      await page.goto(searchUrl, { waitUntil: 'networkidle0' });
-      
-      // Give the page time to load all results - using variable sleep for human-like behavior
-      await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 3000));
-      
-      // Scroll down a bit to load more results (simulating human behavior)
-      await page.evaluate(() => {
-        window.scrollBy(0, 500 + Math.random() * 300);
-      });
-      
-      // Wait a bit after scrolling
-      await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
-      
-      // Extract profile information with improved selectors
-      const profiles = await page.evaluate(() => {
-        const results: Array<{
-          urn: string;
-          name: string;
-          title: string;
-          company: string;
-          location: string;
-          imageUrl: string | null;
-        }> = [];
+        // If all fields are empty, set a default filter to show all leads
+        const allEmpty = !keywords && !location && !industry;
         
-        // Try multiple selectors to find result cards
-        const selectors = [
-          '[data-test-search-result]',
-          '.artdeco-list__item',
-          '.search-results__result-item',
-          '.entity-result__item'
-        ];
-        
-        let cards: NodeListOf<Element> | null = null;
-        
-        // Try each selector until we find cards
-        for (const selector of selectors) {
-          const foundCards = document.querySelectorAll(selector);
-          if (foundCards.length > 0) {
-            cards = foundCards;
-            break;
+        if (allEmpty) {
+          // Add parameters to show all leads (recent searches)
+          params.append('viewAllFilters', 'true');
+          params.append('sortCriteria', 'CREATED_TIME');
+        } else {
+          // Add any non-empty filters
+          if (keywords) {
+            params.append('keywords', keywords);
+          }
+          
+          if (location) {
+            params.append('geoIncluded', location);
+          }
+          
+          if (industry) {
+            params.append('industryIncluded', industry);
           }
         }
         
-        // If no cards found with specific selectors, try a more generic approach
-        if (!cards || cards.length === 0) {
-          cards = document.querySelectorAll('[data-control-name*="search_srp"], .artdeco-entity-lockup');
+        // Add parameters to the URL
+        searchUrl += params.toString();
+        
+        console.log('Searching LinkedIn with URL:', searchUrl);
+        
+        // Navigate to search URL
+        await page.goto(searchUrl, { waitUntil: 'networkidle0' });
+        
+        // Give the page time to load all results - using variable sleep for human-like behavior
+        await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 3000));
+        
+        // Scroll down a bit to load more results (simulating human behavior)
+        await page.evaluate(() => {
+          window.scrollBy(0, 500 + Math.random() * 300);
+        });
+        
+        // Wait a bit after scrolling
+        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
+        
+        // Extract profile information with improved selectors
+        const profiles = await page.evaluate(() => {
+          const results: Array<{
+            urn: string;
+            name: string;
+            title: string;
+            company: string;
+            location: string;
+            imageUrl: string | null;
+          }> = [];
+          
+          // Try multiple selectors to find result cards
+          const selectors = [
+            '[data-test-search-result]',
+            '.artdeco-list__item',
+            '.search-results__result-item',
+            '.entity-result__item'
+          ];
+          
+          let cards: NodeListOf<Element> | null = null;
+          
+          // Try each selector until we find cards
+          for (const selector of selectors) {
+            const foundCards = document.querySelectorAll(selector);
+            if (foundCards.length > 0) {
+              cards = foundCards;
+              break;
+            }
+          }
+          
+          // If no cards found with specific selectors, try a more generic approach
+          if (!cards || cards.length === 0) {
+            cards = document.querySelectorAll('[data-control-name*="search_srp"], .artdeco-entity-lockup');
+          }
+          
+          console.log('Found cards:', cards?.length || 0);
+          
+          if (cards && cards.length > 0) {
+            cards.forEach((card) => {
+              try {
+                // Extract URN from data attributes
+                let urn = '';
+                const urnEl = card.querySelector('[data-test-lead-urn], [data-entity-urn], [data-id]');
+                if (urnEl) {
+                  urn = urnEl.getAttribute('data-test-lead-urn') || 
+                        urnEl.getAttribute('data-entity-urn') || 
+                        urnEl.getAttribute('data-id') || '';
+                }
+                
+                // If no URN found in data attributes, try to extract from href
+                if (!urn) {
+                  const linkEl = card.querySelector('a[href*="/in/"], a[href*="/lead/"]');
+                  if (linkEl) {
+                    const href = linkEl.getAttribute('href') || '';
+                    const inMatch = href.match(/\/in\/([^\/\?]+)/);
+                    const leadMatch = href.match(/\/lead\/([^\/\?]+)/);
+                    urn = inMatch ? inMatch[1] : leadMatch ? leadMatch[1] : '';
+                  }
+                }
+                
+                // Extract name with multiple selectors
+                const nameSelectors = [
+                  '[data-test-result-lockup-name]',
+                  '.artdeco-entity-lockup__title',
+                  '.entity-result__title-text',
+                  '.result-lockup__name',
+                  '.search-result__title',
+                  'h3',
+                  '.name'
+                ];
+                
+                let name = '';
+                for (const selector of nameSelectors) {
+                  const nameEl = card.querySelector(selector);
+                  if (nameEl) {
+                    name = nameEl.textContent?.trim() || '';
+                    if (name) break;
+                  }
+                }
+                
+                // Extract title with multiple selectors
+                const titleSelectors = [
+                  '[data-test-result-lockup-headline]',
+                  '.artdeco-entity-lockup__subtitle',
+                  '.entity-result__primary-subtitle',
+                  '.result-lockup__highlight-keyword',
+                  '.search-result__subtitle',
+                  '.headline'
+                ];
+                
+                let title = '';
+                for (const selector of titleSelectors) {
+                  const titleEl = card.querySelector(selector);
+                  if (titleEl) {
+                    title = titleEl.textContent?.trim() || '';
+                    if (title) break;
+                  }
+                }
+                
+                // Extract company with multiple selectors
+                const companySelectors = [
+                  '[data-test-result-lockup-current-company]',
+                  '.entity-result__secondary-subtitle',
+                  '.artdeco-entity-lockup__caption',
+                  '.result-lockup__position-company',
+                  '.search-result__company-name'
+                ];
+                
+                let company = '';
+                for (const selector of companySelectors) {
+                  const companyEl = card.querySelector(selector);
+                  if (companyEl) {
+                    company = companyEl.textContent?.trim() || '';
+                    if (company) break;
+                  }
+                }
+                
+                // Extract location with multiple selectors
+                const locationSelectors = [
+                  '[data-test-result-lockup-location]',
+                  '.entity-result__tertiary-subtitle',
+                  '.result-lockup__misc-item',
+                  '.search-result__location'
+                ];
+                
+                let location = '';
+                for (const selector of locationSelectors) {
+                  const locationEl = card.querySelector(selector);
+                  if (locationEl) {
+                    location = locationEl.textContent?.trim() || '';
+                    if (location) break;
+                  }
+                }
+                
+                // Extract image URL
+                const imgEl = card.querySelector('img');
+                const imageUrl = imgEl?.getAttribute('src') || null;
+                
+                // Add to results if we have at least a name or URN
+                if (name || urn) {
+                  results.push({
+                    urn: urn || `unnamed_${results.length}`,
+                    name: name || `Unknown Name ${results.length}`,
+                    title,
+                    company,
+                    location,
+                    imageUrl
+                  });
+                }
+              } catch (e) {
+                // Skip this card if there's an error
+                console.error('Error parsing profile card:', e);
+              }
+            });
+          }
+          
+          return results;
+        });
+        
+        // If the profiles array is empty, try to get recent connections
+        if (profiles.length === 0 && allEmpty) {
+          // Navigate to the connections page instead with human-like behavior
+          console.log('No results found, trying homepage for recent connections');
+          
+          // Add a slight delay before navigating
+          await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
+          
+          await page.goto('https://www.linkedin.com/sales/homepage', { waitUntil: 'domcontentloaded' });
+          
+          // Use variable sleep for human-like behavior
+          await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
+          
+          // Scroll down slightly to load more content
+          await page.evaluate(() => {
+            window.scrollBy(0, 300 + Math.random() * 200);
+          });
+          
+          // Wait for scrolling to complete
+          await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
+          
+          // Try to extract recent connections from the homepage with improved selectors
+          const recentProfiles = await page.evaluate(() => {
+            const results: Array<{
+              urn: string;
+              name: string;
+              title: string;
+              company: string;
+              location: string;
+              imageUrl: string | null;
+            }> = [];
+            
+            // Look for various card types on the homepage
+            const cardSelectors = [
+              '.artdeco-card',
+              '.feed-shared-update',
+              '.profile-card',
+              '.connection-card'
+            ];
+            
+            let cards: NodeListOf<Element> | null = null;
+            
+            // Try each selector
+            for (const selector of cardSelectors) {
+              const foundCards = document.querySelectorAll(selector);
+              if (foundCards.length > 0) {
+                cards = foundCards;
+                break;
+              }
+            }
+            
+            if (cards && cards.length > 0) {
+              cards.forEach((card) => {
+                try {
+                  // Extract name with multiple selectors
+                  const nameSelectors = [
+                    'a.ember-view strong',
+                    '.feed-shared-actor__name',
+                    '.actor-name',
+                    '.profile-card__name',
+                    'h3',
+                    '.name',
+                    'a[data-control-name="actor"]'
+                  ];
+                  
+                  let name = '';
+                  let nameEl = null;
+                  
+                  for (const selector of nameSelectors) {
+                    nameEl = card.querySelector(selector);
+                    if (nameEl) {
+                      name = nameEl.textContent?.trim() || '';
+                      if (name) break;
+                    }
+                  }
+                  
+                  if (!name) return; // Skip if no name found
+                  
+                  // Extract URN from links
+                  let urn = '';
+                  const linkSelectors = [
+                    'a.ember-view',
+                    'a[data-control-name="actor"]',
+                    'a[href*="/in/"]',
+                    'a[href*="/lead/"]'
+                  ];
+                  
+                  let linkEl = null;
+                  
+                  for (const selector of linkSelectors) {
+                    linkEl = card.querySelector(selector);
+                    if (linkEl) {
+                      const href = linkEl.getAttribute('href') || '';
+                      const inMatch = href.match(/\/in\/([^\/\?]+)/);
+                      const leadMatch = href.match(/\/lead\/([^\/\?]+)/);
+                      
+                      if (inMatch) {
+                        urn = inMatch[1];
+                        break;
+                      } else if (leadMatch) {
+                        urn = leadMatch[1];
+                        break;
+                      }
+                    }
+                  }
+                  
+                  if (!urn) urn = `unnamed_${results.length}`; // Generate a placeholder if no URN
+                  
+                  // Extract title and company
+                  const subtitleSelectors = [
+                    '.artdeco-entity-lockup__subtitle',
+                    '.feed-shared-actor__description',
+                    '.profile-card__occupation',
+                    '.actor-title'
+                  ];
+                  
+                  let subtitle = '';
+                  let subtitleEl = null;
+                  
+                  for (const selector of subtitleSelectors) {
+                    subtitleEl = card.querySelector(selector);
+                    if (subtitleEl) {
+                      subtitle = subtitleEl.textContent?.trim() || '';
+                      if (subtitle) break;
+                    }
+                  }
+                  
+                  // Split subtitle into title and company if possible
+                  let title = subtitle;
+                  let company = '';
+                  
+                  if (subtitle.includes(' at ')) {
+                    const parts = subtitle.split(' at ');
+                    title = parts[0].trim();
+                    company = parts[1].trim();
+                  }
+                  
+                  // Extract image
+                  const imgEl = card.querySelector('img');
+                  const imageUrl = imgEl?.getAttribute('src') || null;
+                  
+                  // Add to results
+                  results.push({
+                    urn,
+                    name,
+                    title,
+                    company,
+                    location: '',
+                    imageUrl
+                  });
+                } catch (e) {
+                  console.error('Error parsing card:', e);
+                }
+              });
+            }
+            
+            return results;
+          });
+          
+          // Add any found profiles to the results
+          return recentProfiles;
         }
         
-        console.log('Found cards:', cards?.length || 0);
+        return profiles;
+      });
+    } catch (humanBrowserError: unknown) {
+      // If human browser fails, fall back to regular browser
+      console.warn('Human browser search failed, falling back to standard browser:', 
+                  humanBrowserError instanceof Error ? humanBrowserError.message : 'Unknown error');
+      
+      return await withBrowser(async (page) => {
+        console.log('Retrying with standard browser...');
+        // Simplified implementation for fallback
         
-        if (cards && cards.length > 0) {
-          cards.forEach((card) => {
+        // Build the search URL 
+        let searchUrl = 'https://www.linkedin.com/sales/search/people?';
+        const params = new URLSearchParams();
+        
+        const allEmpty = !keywords && !location && !industry;
+        
+        if (allEmpty) {
+          params.append('viewAllFilters', 'true');
+          params.append('sortCriteria', 'CREATED_TIME');
+        } else {
+          if (keywords) params.append('keywords', keywords);
+          if (location) params.append('geoIncluded', location);
+          if (industry) params.append('industryIncluded', industry);
+        }
+        
+        searchUrl += params.toString();
+        console.log('Fallback search with URL:', searchUrl);
+        
+        // Basic navigation with standard browser
+        await page.goto(searchUrl, { waitUntil: 'networkidle0', timeout: 60000 });
+        
+        // Wait for results to load
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Simple scroll to load more results
+        await page.evaluate(() => window.scrollBy(0, 500));
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Extract profiles with basic selectors
+        const profiles = await page.evaluate(() => {
+          const results: Array<{
+            urn: string;
+            name: string;
+            title: string;
+            company: string;
+            location: string;
+            imageUrl: string | null;
+          }> = [];
+          
+          // Use simple selectors that are likely to work
+          const cards = document.querySelectorAll('[data-test-search-result], .search-result, .entity-result');
+          
+          cards.forEach(card => {
             try {
-              // Extract URN from data attributes
-              let urn = '';
-              const urnEl = card.querySelector('[data-test-lead-urn], [data-entity-urn], [data-id]');
-              if (urnEl) {
-                urn = urnEl.getAttribute('data-test-lead-urn') || 
-                      urnEl.getAttribute('data-entity-urn') || 
-                      urnEl.getAttribute('data-id') || '';
-              }
-              
-              // If no URN found in data attributes, try to extract from href
-              if (!urn) {
-                const linkEl = card.querySelector('a[href*="/in/"], a[href*="/lead/"]');
-                if (linkEl) {
-                  const href = linkEl.getAttribute('href') || '';
-                  const inMatch = href.match(/\/in\/([^\/\?]+)/);
-                  const leadMatch = href.match(/\/lead\/([^\/\?]+)/);
-                  urn = inMatch ? inMatch[1] : leadMatch ? leadMatch[1] : '';
-                }
-              }
-              
-              // Extract name with multiple selectors
-              const nameSelectors = [
-                '[data-test-result-lockup-name]',
-                '.artdeco-entity-lockup__title',
-                '.entity-result__title-text',
-                '.result-lockup__name',
-                '.search-result__title',
-                'h3',
-                '.name'
-              ];
-              
-              let name = '';
-              for (const selector of nameSelectors) {
-                const nameEl = card.querySelector(selector);
-                if (nameEl) {
-                  name = nameEl.textContent?.trim() || '';
-                  if (name) break;
-                }
-              }
-              
-              // Extract title with multiple selectors
-              const titleSelectors = [
-                '[data-test-result-lockup-headline]',
-                '.artdeco-entity-lockup__subtitle',
-                '.entity-result__primary-subtitle',
-                '.result-lockup__highlight-keyword',
-                '.search-result__subtitle',
-                '.headline'
-              ];
-              
-              let title = '';
-              for (const selector of titleSelectors) {
-                const titleEl = card.querySelector(selector);
-                if (titleEl) {
-                  title = titleEl.textContent?.trim() || '';
-                  if (title) break;
-                }
-              }
-              
-              // Extract company with multiple selectors
-              const companySelectors = [
-                '[data-test-result-lockup-current-company]',
-                '.entity-result__secondary-subtitle',
-                '.artdeco-entity-lockup__caption',
-                '.result-lockup__position-company',
-                '.search-result__company-name'
-              ];
-              
-              let company = '';
-              for (const selector of companySelectors) {
-                const companyEl = card.querySelector(selector);
-                if (companyEl) {
-                  company = companyEl.textContent?.trim() || '';
-                  if (company) break;
-                }
-              }
-              
-              // Extract location with multiple selectors
-              const locationSelectors = [
-                '[data-test-result-lockup-location]',
-                '.entity-result__tertiary-subtitle',
-                '.result-lockup__misc-item',
-                '.search-result__location'
-              ];
-              
-              let location = '';
-              for (const selector of locationSelectors) {
-                const locationEl = card.querySelector(selector);
-                if (locationEl) {
-                  location = locationEl.textContent?.trim() || '';
-                  if (location) break;
-                }
-              }
-              
-              // Extract image URL
+              // Get name, title, etc. using simple selectors
+              const nameEl = card.querySelector('h3, .name, [data-test-result-lockup-name]');
+              const titleEl = card.querySelector('.headline, [data-test-result-lockup-headline]');
+              const companyEl = card.querySelector('[data-test-result-lockup-current-company]');
+              const locationEl = card.querySelector('[data-test-result-lockup-location]');
               const imgEl = card.querySelector('img');
+              
+              // Get profile URL to extract URN
+              const profileLink = card.querySelector('a[href*="/in/"], a[href*="/lead/"]');
+              
+              // Extract values
+              const name = nameEl?.textContent?.trim() || '';
+              const title = titleEl?.textContent?.trim() || '';
+              const company = companyEl?.textContent?.trim() || '';
+              const location = locationEl?.textContent?.trim() || '';
               const imageUrl = imgEl?.getAttribute('src') || null;
               
-              // Add to results if we have at least a name or URN
+              // Extract URN from profile link
+              let urn = '';
+              if (profileLink) {
+                const href = profileLink.getAttribute('href') || '';
+                const inMatch = href.match(/\/in\/([^\/\?]+)/);
+                const leadMatch = href.match(/\/lead\/([^\/\?]+)/);
+                urn = inMatch ? inMatch[1] : leadMatch ? leadMatch[1] : '';
+              }
+              
+              // Add to results if we have basic information
               if (name || urn) {
                 results.push({
                   urn: urn || `unnamed_${results.length}`,
@@ -304,186 +572,176 @@ export async function searchLinkedInUsers(env: AdminEnv, keywords: string, locat
                 });
               }
             } catch (e) {
-              // Skip this card if there's an error
               console.error('Error parsing profile card:', e);
             }
           });
-        }
-        
-        return results;
-      });
-      
-      // If the profiles array is empty, try to get recent connections
-      if (profiles.length === 0 && allEmpty) {
-        // Navigate to the connections page instead with human-like behavior
-        console.log('No results found, trying homepage for recent connections');
-        
-        // Add a slight delay before navigating
-        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
-        
-        await page.goto('https://www.linkedin.com/sales/homepage', { waitUntil: 'domcontentloaded' });
-        
-        // Use variable sleep for human-like behavior
-        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
-        
-        // Scroll down slightly to load more content
-        await page.evaluate(() => {
-          window.scrollBy(0, 300 + Math.random() * 200);
-        });
-        
-        // Wait for scrolling to complete
-        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
-        
-        // Try to extract recent connections from the homepage with improved selectors
-        const recentProfiles = await page.evaluate(() => {
-          const results: Array<{
-            urn: string;
-            name: string;
-            title: string;
-            company: string;
-            location: string;
-            imageUrl: string | null;
-          }> = [];
-          
-          // Look for various card types on the homepage
-          const cardSelectors = [
-            '.artdeco-card',
-            '.feed-shared-update',
-            '.profile-card',
-            '.connection-card'
-          ];
-          
-          let cards: NodeListOf<Element> | null = null;
-          
-          // Try each selector
-          for (const selector of cardSelectors) {
-            const foundCards = document.querySelectorAll(selector);
-            if (foundCards.length > 0) {
-              cards = foundCards;
-              break;
-            }
-          }
-          
-          if (cards && cards.length > 0) {
-            cards.forEach((card) => {
-              try {
-                // Extract name with multiple selectors
-                const nameSelectors = [
-                  'a.ember-view strong',
-                  '.feed-shared-actor__name',
-                  '.actor-name',
-                  '.profile-card__name',
-                  'h3',
-                  '.name',
-                  'a[data-control-name="actor"]'
-                ];
-                
-                let name = '';
-                let nameEl = null;
-                
-                for (const selector of nameSelectors) {
-                  nameEl = card.querySelector(selector);
-                  if (nameEl) {
-                    name = nameEl.textContent?.trim() || '';
-                    if (name) break;
-                  }
-                }
-                
-                if (!name) return; // Skip if no name found
-                
-                // Extract URN from links
-                let urn = '';
-                const linkSelectors = [
-                  'a.ember-view',
-                  'a[data-control-name="actor"]',
-                  'a[href*="/in/"]',
-                  'a[href*="/lead/"]'
-                ];
-                
-                let linkEl = null;
-                
-                for (const selector of linkSelectors) {
-                  linkEl = card.querySelector(selector);
-                  if (linkEl) {
-                    const href = linkEl.getAttribute('href') || '';
-                    const inMatch = href.match(/\/in\/([^\/\?]+)/);
-                    const leadMatch = href.match(/\/lead\/([^\/\?]+)/);
-                    
-                    if (inMatch) {
-                      urn = inMatch[1];
-                      break;
-                    } else if (leadMatch) {
-                      urn = leadMatch[1];
-                      break;
-                    }
-                  }
-                }
-                
-                if (!urn) urn = `unnamed_${results.length}`; // Generate a placeholder if no URN
-                
-                // Extract title and company
-                const subtitleSelectors = [
-                  '.artdeco-entity-lockup__subtitle',
-                  '.feed-shared-actor__description',
-                  '.profile-card__occupation',
-                  '.actor-title'
-                ];
-                
-                let subtitle = '';
-                let subtitleEl = null;
-                
-                for (const selector of subtitleSelectors) {
-                  subtitleEl = card.querySelector(selector);
-                  if (subtitleEl) {
-                    subtitle = subtitleEl.textContent?.trim() || '';
-                    if (subtitle) break;
-                  }
-                }
-                
-                // Split subtitle into title and company if possible
-                let title = subtitle;
-                let company = '';
-                
-                if (subtitle.includes(' at ')) {
-                  const parts = subtitle.split(' at ');
-                  title = parts[0].trim();
-                  company = parts[1].trim();
-                }
-                
-                // Extract image
-                const imgEl = card.querySelector('img');
-                const imageUrl = imgEl?.getAttribute('src') || null;
-                
-                // Add to results
-                results.push({
-                  urn,
-                  name,
-                  title,
-                  company,
-                  location: '',
-                  imageUrl
-                });
-              } catch (e) {
-                console.error('Error parsing card:', e);
-              }
-            });
-          }
           
           return results;
         });
         
-        // Add any found profiles to the results
-        return recentProfiles;
-      }
-      
-      return profiles;
-    });
-    
-    return results;
+        // If no results found in main search, try the homepage
+        if (profiles.length === 0 && allEmpty) {
+          console.log('No results in fallback search, trying homepage');
+          return await getRecentConnectionsFromHomepage(page);
+        }
+        
+        return profiles;
+      });
+    }
   } catch (error) {
     console.error('LinkedIn search error:', error);
     throw error;
   }
+}
+
+/**
+ * Helper function to get recent connections from homepage
+ * Extracted to avoid code duplication in fallback path
+ */
+async function getRecentConnectionsFromHomepage(page: any): Promise<LinkedInProfile[]> {
+  // Navigate to the connections page
+  await page.goto('https://www.linkedin.com/sales/homepage', { waitUntil: 'domcontentloaded' });
+  
+  // Wait for page to load
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  
+  // Extract recent connections from the homepage
+  return await page.evaluate(() => {
+    const results: Array<{
+      urn: string;
+      name: string;
+      title: string;
+      company: string;
+      location: string;
+      imageUrl: string | null;
+    }> = [];
+    
+    // Look for various card types on the homepage
+    const cardSelectors = [
+      '.artdeco-card',
+      '.feed-shared-update',
+      '.profile-card',
+      '.connection-card'
+    ];
+    
+    let cards: NodeListOf<Element> | null = null;
+    
+    // Try each selector
+    for (const selector of cardSelectors) {
+      const foundCards = document.querySelectorAll(selector);
+      if (foundCards.length > 0) {
+        cards = foundCards;
+        break;
+      }
+    }
+    
+    if (cards && cards.length > 0) {
+      cards.forEach((card) => {
+        try {
+          // Extract name with multiple selectors
+          const nameSelectors = [
+            'a.ember-view strong',
+            '.feed-shared-actor__name',
+            '.actor-name',
+            '.profile-card__name',
+            'h3',
+            '.name',
+            'a[data-control-name="actor"]'
+          ];
+          
+          let name = '';
+          let nameEl = null;
+          
+          for (const selector of nameSelectors) {
+            nameEl = card.querySelector(selector);
+            if (nameEl) {
+              name = nameEl.textContent?.trim() || '';
+              if (name) break;
+            }
+          }
+          
+          if (!name) return; // Skip if no name found
+          
+          // Extract URN from links
+          let urn = '';
+          const linkSelectors = [
+            'a.ember-view',
+            'a[data-control-name="actor"]',
+            'a[href*="/in/"]',
+            'a[href*="/lead/"]'
+          ];
+          
+          let linkEl = null;
+          
+          for (const selector of linkSelectors) {
+            linkEl = card.querySelector(selector);
+            if (linkEl) {
+              const href = linkEl.getAttribute('href') || '';
+              const inMatch = href.match(/\/in\/([^\/\?]+)/);
+              const leadMatch = href.match(/\/lead\/([^\/\?]+)/);
+              
+              if (inMatch) {
+                urn = inMatch[1];
+                break;
+              } else if (leadMatch) {
+                urn = leadMatch[1];
+                break;
+              }
+            }
+          }
+          
+          if (!urn) urn = `unnamed_${results.length}`; // Generate a placeholder if no URN
+          
+          // Extract title and company
+          const subtitleSelectors = [
+            '.artdeco-entity-lockup__subtitle',
+            '.feed-shared-actor__description',
+            '.profile-card__occupation',
+            '.actor-title'
+          ];
+          
+          let subtitle = '';
+          let subtitleEl = null;
+          
+          for (const selector of subtitleSelectors) {
+            subtitleEl = card.querySelector(selector);
+            if (subtitleEl) {
+              subtitle = subtitleEl.textContent?.trim() || '';
+              if (subtitle) break;
+            }
+          }
+          
+          // Split subtitle into title and company if possible
+          let title = subtitle;
+          let company = '';
+          
+          if (subtitle.includes(' at ')) {
+            const parts = subtitle.split(' at ');
+            title = parts[0].trim();
+            company = parts[1].trim();
+          }
+          
+          // Extract image
+          const imgEl = card.querySelector('img');
+          const imageUrl = imgEl?.getAttribute('src') || null;
+          
+          // Add to results
+          results.push({
+            urn,
+            name,
+            title,
+            company,
+            location: '',
+            imageUrl
+          });
+        } catch (e) {
+          console.error('Error parsing card:', e);
+        }
+      });
+    }
+    
+    return results;
+  });
 }
 
 /**
@@ -763,119 +1021,315 @@ async function searchConnectionsBackground(
   const { title, company, industry } = criteria;
   
   try {
-    const { withHumanBrowser } = await import('../common');
+    const { withHumanBrowser, withBrowser } = await import('../common');
     const { addDebugLog, captureDebugScreenshot, createDebugEnabledPage, completeDebugSession } = await import('../debug');
     
-    await withHumanBrowser<void>(async (page) => {
-      try {
-        // Configure screenshot settings
-        const config = {
-          enabled: true,
-          frequency: 'high' as 'high',
-          saveLocally: false,
-          maxScreenshots: 30
-        };
-        
-        // Wrap page with debug capabilities
-        const debugPage = createDebugEnabledPage(page, debugSessionId, config);
-        
-        // Log the start of the process
-        addDebugLog(debugSessionId, "Starting LinkedIn connections search");
-        
-        // Navigate to LinkedIn connections page with appropriate error handling
-        addDebugLog(debugSessionId, "Navigating to LinkedIn My Network page");
-        
-        // Use a try/catch for each navigation to handle context destroyed errors
+    // Log the start of the process
+    addDebugLog(debugSessionId, "Starting LinkedIn connections search");
+    
+    try {
+      // First try with human browser
+      await withHumanBrowser<void>(async (page) => {
         try {
-          // Navigate with more generous timeout and more resilient settings
-          await debugPage.goto('https://www.linkedin.com/mynetwork/', { 
+          // Configure screenshot settings
+          const config = {
+            enabled: true,
+            frequency: 'high' as 'high',
+            saveLocally: false,
+            maxScreenshots: 30
+          };
+          
+          // Wrap page with debug capabilities
+          const debugPage = createDebugEnabledPage(page, debugSessionId, config);
+          
+          // Navigate to LinkedIn connections page with appropriate error handling
+          addDebugLog(debugSessionId, "Navigating to LinkedIn My Network page");
+          
+          // Use a try/catch for each navigation to handle context destroyed errors
+          try {
+            // Navigate with more generous timeout and more resilient settings
+            await debugPage.goto('https://www.linkedin.com/mynetwork/', { 
+              waitUntil: 'domcontentloaded', 
+              timeout: 60000 
+            });
+            
+            // Capture screenshot with proper error handling
+            await captureDebugScreenshot(debugPage, debugSessionId, "LinkedIn Network Page");
+            addDebugLog(debugSessionId, "Successfully loaded My Network page");
+          } catch (error) {
+            const navError = error as Error;
+            addDebugLog(debugSessionId, `Navigation error: ${navError.message}`);
+            // Don't rethrow, try to continue if possible
+          }
+          
+          // Small delay to ensure the page loads properly - simulate human behavior
+          await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
+          
+          // Try to capture screenshot after navigation completed
+          try {
+            await captureDebugScreenshot(debugPage, debugSessionId, "After Navigation Completed");
+          } catch (error) {
+            const screenshotError = error as Error;
+            addDebugLog(debugSessionId, `Screenshot error after navigation: ${screenshotError.message}`);
+          }
+          
+          // Check for connection tab/section and click it if needed
+          addDebugLog(debugSessionId, "Looking for connections section");
+          
+          try {
+            // Wait for connections elements to be visible
+            await debugPage.waitForSelector('.mn-connections, a[href="/mynetwork/connections/"]', { timeout: 10000 })
+              .catch(() => addDebugLog(debugSessionId, "Could not find connections element with standard selector"));
+            
+            // Take a screenshot of connections section
+            await captureDebugScreenshot(debugPage, debugSessionId, "Connections Section");
+            
+            // Click on connections tab if it exists
+            const hasConnectionsTab = await debugPage.evaluate(() => {
+              const connectionsTab = document.querySelector('a[href="/mynetwork/connections/"]');
+              if (connectionsTab) {
+                (connectionsTab as HTMLElement).click();
+                return true;
+              }
+              
+              // Try alternative selectors if the first one doesn't work
+              const alternativeSelectors = [
+                '.mn-community-summary__entity-info a',
+                '.artdeco-card a[href*="connections"]',
+                '.mn-community-summary__section-title a'
+              ];
+              
+              for (const selector of alternativeSelectors) {
+                const element = document.querySelector(selector);
+                if (element && element.textContent?.includes('Connections')) {
+                  (element as HTMLElement).click();
+                  return true;
+                }
+              }
+              
+              return false;
+            });
+            
+            if (hasConnectionsTab) {
+              addDebugLog(debugSessionId, "Clicked on connections tab");
+              // Wait for the page to load after click - simulate human waiting
+              await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
+              
+              // Take another screenshot
+              await captureDebugScreenshot(debugPage, debugSessionId, "After Clicking Connections Tab");
+            } else {
+              addDebugLog(debugSessionId, "No connections tab found, continuing with current page");
+            }
+          } catch (error) {
+            const selectorError = error as Error;
+            addDebugLog(debugSessionId, `Error finding connections section: ${selectorError.message}`);
+          }
+          
+          // Apply search filters if any were provided
+          if (title || company || industry) {
+            addDebugLog(debugSessionId, "Applying search filters");
+            
+            try {
+              // Look for search box and enter criteria
+              const searchBox = await debugPage.$('input[placeholder*="Search"], input[placeholder*="search"], input[placeholder*="Filter"]');
+              if (searchBox) {
+                addDebugLog(debugSessionId, "Found search input field");
+                await captureDebugScreenshot(debugPage, debugSessionId, "Before Entering Search");
+                
+                // Combine search criteria
+                const searchQuery = [
+                  title ? `title:"${title}"` : '',
+                  company ? `company:"${company}"` : '',
+                  industry ? `industry:"${industry}"` : ''
+                ].filter(Boolean).join(' ');
+                
+                // Clear previous input if any
+                await searchBox.click({ clickCount: 3 }); // Triple click to select all text
+                await searchBox.press('Backspace'); // Delete selected text
+                
+                // Type search query with human-like typing speed
+                await searchBox.type(searchQuery, { delay: 50 + Math.random() * 100 });
+                addDebugLog(debugSessionId, `Entered search query: ${searchQuery}`);
+                
+                // Take screenshot after typing
+                await captureDebugScreenshot(debugPage, debugSessionId, "After Entering Search");
+                
+                // Wait briefly before pressing Enter - human-like behavior
+                await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
+                
+                // Press Enter to search
+                await searchBox.press('Enter');
+                addDebugLog(debugSessionId, "Pressed Enter to search");
+                
+                // Wait for results to load with human-like randomness
+                await new Promise(resolve => setTimeout(resolve, 4000 + Math.random() * 2000));
+                await captureDebugScreenshot(debugPage, debugSessionId, "Search Results");
+              } else {
+                addDebugLog(debugSessionId, "Could not find search input field");
+              }
+            } catch (error) {
+              const searchError = error as Error;
+              addDebugLog(debugSessionId, `Error applying search filters: ${searchError.message}`);
+            }
+          }
+          
+          // Extract connection results
+          addDebugLog(debugSessionId, "Extracting connection results");
+          
+          try {
+            // Take final screenshot of results
+            await captureDebugScreenshot(debugPage, debugSessionId, "Final Results");
+            
+            // Attempt to extract connection data
+            const connectionResults = await debugPage.evaluate(() => {
+              const connections: Array<{ name: string, title: string, urn: string, imageUrl: string | null, company: string, location: string }> = [];
+              
+              // Try multiple selectors to find connection cards
+              const cardSelectors = [
+                '.mn-connection-card',
+                '.connection-card',
+                '.artdeco-list__item',
+                '.search-result'
+              ];
+              
+              let cards: NodeListOf<Element> | null = null;
+              
+              // Try each selector until we find some connection cards
+              for (const selector of cardSelectors) {
+                const foundCards = document.querySelectorAll(selector);
+                if (foundCards.length > 0) {
+                  cards = foundCards;
+                  break;
+                }
+              }
+              
+              if (!cards || cards.length === 0) {
+                // If no cards found with standard selectors, try a more generic approach
+                cards = document.querySelectorAll('[data-control-name="connection_profile"], .artdeco-entity-lockup');
+              }
+              
+              console.log('Found cards:', cards?.length || 0);
+              
+              if (cards && cards.length > 0) {
+                cards.forEach(card => {
+                  try {
+                    // Extract profile information from card
+                    const nameElement = card.querySelector('.mn-connection-card__name, .artdeco-entity-lockup__title, [data-test-connection-card-name], h3, strong');
+                    const titleElement = card.querySelector('.mn-connection-card__occupation, .artdeco-entity-lockup__subtitle, [data-test-connection-card-occupation], .entity-result__primary-subtitle');
+                    const imgElement = card.querySelector('img');
+                    const profileLink = card.querySelector('a[href*="/in/"]');
+                    const companyElement = card.querySelector('.entity-result__secondary-subtitle, .artdeco-entity-lockup__caption');
+                    const locationElement = card.querySelector('.entity-result__tertiary-subtitle');
+                    
+                    const name = nameElement ? nameElement.textContent?.trim() || '' : '';
+                    const title = titleElement ? titleElement.textContent?.trim() || '' : '';
+                    const imageUrl = imgElement ? imgElement.getAttribute('src') : null;
+                    const company = companyElement ? companyElement.textContent?.trim() || '' : '';
+                    const location = locationElement ? locationElement.textContent?.trim() || '' : '';
+                    
+                    // Extract the URN (profile identifier) from URL
+                    let urn = '';
+                    if (profileLink) {
+                      const href = profileLink.getAttribute('href') || '';
+                      const match = href.match(/\/in\/([^/]+)/);
+                      urn = match ? match[1] : '';
+                    }
+                    
+                    if (name) {
+                      connections.push({ 
+                        name, 
+                        title, 
+                        urn, 
+                        imageUrl,
+                        company,
+                        location 
+                      });
+                    }
+                  } catch (cardError) {
+                    // Skip this card if there's an error
+                    console.error("Error processing connection card:", cardError);
+                  }
+                });
+              }
+              
+              return connections;
+            });
+            
+            addDebugLog(debugSessionId, `Found ${connectionResults.length} connections`);
+            
+            // Add results to debug log
+            if (connectionResults.length > 0) {
+              addDebugLog(debugSessionId, `Sample connection: ${JSON.stringify(connectionResults[0])}`);
+              
+              // Store connection results in the debug session for later retrieval
+              for (let i = 0; i < Math.min(connectionResults.length, 50); i++) {
+                const connection = connectionResults[i];
+                addDebugLog(debugSessionId, `Connection ${i+1}: ${connection.name} - ${connection.title || 'No title'} ${connection.company ? 'at ' + connection.company : ''}`);
+              }
+            } else {
+              addDebugLog(debugSessionId, "No connections found matching criteria");
+            }
+            
+            // Mark session as complete with success
+            completeDebugSession(debugSessionId);
+            
+          } catch (error) {
+            const extractError = error as Error;
+            addDebugLog(debugSessionId, `Error extracting connections: ${extractError.message}`);
+            throw extractError;
+          }
+          
+        } catch (error) {
+          const pageError = error as Error;
+          addDebugLog(debugSessionId, `Page error: ${pageError.message}`);
+          
+          // Try one last screenshot if possible
+          try {
+            await captureDebugScreenshot(page, debugSessionId, "Error State");
+          } catch (error) {
+            const screenshotError = error as Error;
+            addDebugLog(debugSessionId, `Failed to capture error screenshot: ${screenshotError.message}`);
+          }
+          
+          throw pageError;
+        }
+      });
+      
+    } catch (browserError: unknown) {
+      // If human browser fails, try with regular browser as fallback
+      const typedError = browserError as Error;
+      addDebugLog(debugSessionId, `Human browser failed: ${typedError.message}. Trying with standard browser...`);
+      
+      // Fallback to regular browser
+      await withBrowser<void>(async (page) => {
+        try {
+          // Configure screenshot settings
+          const config = {
+            enabled: true,
+            frequency: 'high' as 'high',
+            saveLocally: false,
+            maxScreenshots: 30
+          };
+          
+          // Wrap page with debug capabilities
+          const debugPage = createDebugEnabledPage(page, debugSessionId, config);
+          
+          addDebugLog(debugSessionId, "Using standard browser as fallback");
+          
+          // Basic version of the search without human-like behavior
+          await debugPage.goto('https://www.linkedin.com/mynetwork/connections/', { 
             waitUntil: 'domcontentloaded', 
             timeout: 60000 
           });
           
-          // Capture screenshot with proper error handling
-          await captureDebugScreenshot(debugPage, debugSessionId, "LinkedIn Network Page");
-          addDebugLog(debugSessionId, "Successfully loaded My Network page");
-        } catch (error) {
-          const navError = error as Error;
-          addDebugLog(debugSessionId, `Navigation error: ${navError.message}`);
-          // Don't rethrow, try to continue if possible
-        }
-        
-        // Small delay to ensure the page loads properly - simulate human behavior
-        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
-        
-        // Try to capture screenshot after navigation completed
-        try {
-          await captureDebugScreenshot(debugPage, debugSessionId, "After Navigation Completed");
-        } catch (error) {
-          const screenshotError = error as Error;
-          addDebugLog(debugSessionId, `Screenshot error after navigation: ${screenshotError.message}`);
-        }
-        
-        // Check for connection tab/section and click it if needed
-        addDebugLog(debugSessionId, "Looking for connections section");
-        
-        try {
-          // Wait for connections elements to be visible
-          await debugPage.waitForSelector('.mn-connections, a[href="/mynetwork/connections/"]', { timeout: 10000 })
-            .catch(() => addDebugLog(debugSessionId, "Could not find connections element with standard selector"));
+          await captureDebugScreenshot(debugPage, debugSessionId, "LinkedIn Connections Page (Fallback)");
           
-          // Take a screenshot of connections section
-          await captureDebugScreenshot(debugPage, debugSessionId, "Connections Section");
-          
-          // Click on connections tab if it exists
-          const hasConnectionsTab = await debugPage.evaluate(() => {
-            const connectionsTab = document.querySelector('a[href="/mynetwork/connections/"]');
-            if (connectionsTab) {
-              (connectionsTab as HTMLElement).click();
-              return true;
-            }
+          // If we have search criteria, use the search box
+          if (title || company || industry) {
+            addDebugLog(debugSessionId, "Applying search filters (fallback mode)");
             
-            // Try alternative selectors if the first one doesn't work
-            const alternativeSelectors = [
-              '.mn-community-summary__entity-info a',
-              '.artdeco-card a[href*="connections"]',
-              '.mn-community-summary__section-title a'
-            ];
-            
-            for (const selector of alternativeSelectors) {
-              const element = document.querySelector(selector);
-              if (element && element.textContent?.includes('Connections')) {
-                (element as HTMLElement).click();
-                return true;
-              }
-            }
-            
-            return false;
-          });
-          
-          if (hasConnectionsTab) {
-            addDebugLog(debugSessionId, "Clicked on connections tab");
-            // Wait for the page to load after click - simulate human waiting
-            await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
-            
-            // Take another screenshot
-            await captureDebugScreenshot(debugPage, debugSessionId, "After Clicking Connections Tab");
-          } else {
-            addDebugLog(debugSessionId, "No connections tab found, continuing with current page");
-          }
-        } catch (error) {
-          const selectorError = error as Error;
-          addDebugLog(debugSessionId, `Error finding connections section: ${selectorError.message}`);
-        }
-        
-        // Apply search filters if any were provided
-        if (title || company || industry) {
-          addDebugLog(debugSessionId, "Applying search filters");
-          
-          try {
-            // Look for search box and enter criteria
             const searchBox = await debugPage.$('input[placeholder*="Search"], input[placeholder*="search"], input[placeholder*="Filter"]');
             if (searchBox) {
-              addDebugLog(debugSessionId, "Found search input field");
-              await captureDebugScreenshot(debugPage, debugSessionId, "Before Entering Search");
-              
               // Combine search criteria
               const searchQuery = [
                 title ? `title:"${title}"` : '',
@@ -883,157 +1337,75 @@ async function searchConnectionsBackground(
                 industry ? `industry:"${industry}"` : ''
               ].filter(Boolean).join(' ');
               
-              // Clear previous input if any
-              await searchBox.click({ clickCount: 3 }); // Triple click to select all text
-              await searchBox.press('Backspace'); // Delete selected text
-              
-              // Type search query with human-like typing speed
-              await searchBox.type(searchQuery, { delay: 50 + Math.random() * 100 });
-              addDebugLog(debugSessionId, `Entered search query: ${searchQuery}`);
-              
-              // Take screenshot after typing
-              await captureDebugScreenshot(debugPage, debugSessionId, "After Entering Search");
-              
-              // Wait briefly before pressing Enter - human-like behavior
-              await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
-              
-              // Press Enter to search
+              await searchBox.click();
+              await searchBox.type(searchQuery);
               await searchBox.press('Enter');
-              addDebugLog(debugSessionId, "Pressed Enter to search");
               
-              // Wait for results to load with human-like randomness
-              await new Promise(resolve => setTimeout(resolve, 4000 + Math.random() * 2000));
-              await captureDebugScreenshot(debugPage, debugSessionId, "Search Results");
-            } else {
-              addDebugLog(debugSessionId, "Could not find search input field");
+              addDebugLog(debugSessionId, `Entered search query: ${searchQuery}`);
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              await captureDebugScreenshot(debugPage, debugSessionId, "Search Results (Fallback)");
             }
-          } catch (error) {
-            const searchError = error as Error;
-            addDebugLog(debugSessionId, `Error applying search filters: ${searchError.message}`);
           }
-        }
-        
-        // Extract connection results
-        addDebugLog(debugSessionId, "Extracting connection results");
-        
-        try {
-          // Take final screenshot of results
-          await captureDebugScreenshot(debugPage, debugSessionId, "Final Results");
           
-          // Attempt to extract connection data
+          // Extract connection data using simplified selectors
           const connectionResults = await debugPage.evaluate(() => {
-            const connections: Array<{ name: string, title: string, urn: string, imageUrl: string | null, company: string, location: string }> = [];
+            const connections: Array<{ name: string, title: string, urn: string, imageUrl: string | null }> = [];
             
-            // Try multiple selectors to find connection cards
-            const cardSelectors = [
-              '.mn-connection-card',
-              '.connection-card',
-              '.artdeco-list__item',
-              '.search-result'
-            ];
+            // Try common connection card selectors
+            const cards = document.querySelectorAll('.mn-connection-card, .search-result, .entity-result');
             
-            let cards: NodeListOf<Element> | null = null;
-            
-            // Try each selector until we find some connection cards
-            for (const selector of cardSelectors) {
-              const foundCards = document.querySelectorAll(selector);
-              if (foundCards.length > 0) {
-                cards = foundCards;
-                break;
-              }
-            }
-            
-            if (!cards || cards.length === 0) {
-              // If no cards found with standard selectors, try a more generic approach
-              cards = document.querySelectorAll('[data-control-name="connection_profile"], .artdeco-entity-lockup');
-            }
-            
-            console.log('Found cards:', cards?.length || 0);
-            
-            if (cards && cards.length > 0) {
-              cards.forEach(card => {
-                try {
-                  // Extract profile information from card
-                  const nameElement = card.querySelector('.mn-connection-card__name, .artdeco-entity-lockup__title, [data-test-connection-card-name], h3, strong');
-                  const titleElement = card.querySelector('.mn-connection-card__occupation, .artdeco-entity-lockup__subtitle, [data-test-connection-card-occupation], .entity-result__primary-subtitle');
-                  const imgElement = card.querySelector('img');
-                  const profileLink = card.querySelector('a[href*="/in/"]');
-                  const companyElement = card.querySelector('.entity-result__secondary-subtitle, .artdeco-entity-lockup__caption');
-                  const locationElement = card.querySelector('.entity-result__tertiary-subtitle');
-                  
-                  const name = nameElement ? nameElement.textContent?.trim() || '' : '';
-                  const title = titleElement ? titleElement.textContent?.trim() || '' : '';
-                  const imageUrl = imgElement ? imgElement.getAttribute('src') : null;
-                  const company = companyElement ? companyElement.textContent?.trim() || '' : '';
-                  const location = locationElement ? locationElement.textContent?.trim() || '' : '';
-                  
-                  // Extract the URN (profile identifier) from URL
-                  let urn = '';
-                  if (profileLink) {
-                    const href = profileLink.getAttribute('href') || '';
-                    const match = href.match(/\/in\/([^/]+)/);
-                    urn = match ? match[1] : '';
-                  }
-                  
-                  if (name) {
-                    connections.push({ 
-                      name, 
-                      title, 
-                      urn, 
-                      imageUrl,
-                      company,
-                      location 
-                    });
-                  }
-                } catch (cardError) {
-                  // Skip this card if there's an error
-                  console.error("Error processing connection card:", cardError);
+            cards.forEach(card => {
+              try {
+                // Extract basic details
+                const nameEl = card.querySelector('h3, .entity-result__title, .mn-connection-card__name');
+                const titleEl = card.querySelector('.entity-result__primary-subtitle, .mn-connection-card__occupation');
+                const imgEl = card.querySelector('img');
+                const profileLink = card.querySelector('a[href*="/in/"]');
+                
+                const name = nameEl?.textContent?.trim() || '';
+                const title = titleEl?.textContent?.trim() || '';
+                const imageUrl = imgEl?.getAttribute('src') || null;
+                
+                // Extract profile identifier
+                let urn = '';
+                if (profileLink) {
+                  const href = profileLink.getAttribute('href') || '';
+                  const match = href.match(/\/in\/([^/]+)/);
+                  urn = match ? match[1] : '';
                 }
-              });
-            }
+                
+                if (name) {
+                  connections.push({
+                    name,
+                    title,
+                    urn,
+                    imageUrl
+                  });
+                }
+              } catch (e) {
+                console.error('Error parsing connection card:', e);
+              }
+            });
             
             return connections;
           });
           
-          addDebugLog(debugSessionId, `Found ${connectionResults.length} connections`);
+          addDebugLog(debugSessionId, `Found ${connectionResults.length} connections (fallback mode)`);
           
-          // Add results to debug log
           if (connectionResults.length > 0) {
             addDebugLog(debugSessionId, `Sample connection: ${JSON.stringify(connectionResults[0])}`);
-            
-            // Store connection results in the debug session for later retrieval
-            for (let i = 0; i < Math.min(connectionResults.length, 50); i++) {
-              const connection = connectionResults[i];
-              addDebugLog(debugSessionId, `Connection ${i+1}: ${connection.name} - ${connection.title || 'No title'} ${connection.company ? 'at ' + connection.company : ''}`);
-            }
           } else {
-            addDebugLog(debugSessionId, "No connections found matching criteria");
+            addDebugLog(debugSessionId, "No connections found matching criteria (fallback mode)");
           }
           
-          // Mark session as complete with success
           completeDebugSession(debugSessionId);
-          
         } catch (error) {
-          const extractError = error as Error;
-          addDebugLog(debugSessionId, `Error extracting connections: ${extractError.message}`);
-          throw extractError;
+          const pageError = error as Error;
+          addDebugLog(debugSessionId, `Fallback browser error: ${pageError.message}`);
+          throw pageError;
         }
-        
-      } catch (error) {
-        const pageError = error as Error;
-        addDebugLog(debugSessionId, `Page error: ${pageError.message}`);
-        
-        // Try one last screenshot if possible
-        try {
-          await captureDebugScreenshot(page, debugSessionId, "Error State");
-        } catch (error) {
-          const screenshotError = error as Error;
-          addDebugLog(debugSessionId, `Failed to capture error screenshot: ${screenshotError.message}`);
-        }
-        
-        throw pageError;
-      }
-    });
+      });
+    }
     
   } catch (error) {
     const { addDebugLog, completeDebugSession } = await import('../debug');
