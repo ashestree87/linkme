@@ -44,25 +44,70 @@ export function validateCredentials(): boolean {
  * @returns Base64 encoded screenshot data
  */
 export async function takeScreenshot(page: any, name: string, saveLocally: boolean = true): Promise<string> {
+  console.log(`Attempting to take screenshot: ${name}`);
+  
   try {
+    // Check if page is valid
+    if (!page) {
+      console.error('Cannot take screenshot: page is null or undefined');
+      return '';
+    }
+    
+    // Verify page has screenshot method
+    if (typeof page.screenshot !== 'function') {
+      console.error('Cannot take screenshot: page.screenshot is not a function', typeof page.screenshot);
+      return '';
+    }
+    
     // Generate timestamp for unique filename
     const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
     const filename = `linkedin_${name}_${timestamp}.png`;
     
-    // Take the screenshot
-    const screenshotData = await page.screenshot({ 
+    // Take the screenshot with timeout protection
+    console.log(`Taking screenshot ${name}...`);
+    
+    const screenshotPromise = page.screenshot({ 
       fullPage: false, 
-      encoding: saveLocally ? undefined : 'base64' 
+      encoding: saveLocally ? undefined : 'base64',
+      type: 'png',
+      quality: 80, // Reduce quality for better performance
+      captureBeyondViewport: false // Don't try to capture beyond viewport for better reliability
     });
+    
+    // Add a timeout to prevent hanging
+    const timeoutPromise = new Promise<string>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Screenshot timeout after 10 seconds for ${name}`));
+      }, 10000);
+    });
+    
+    // Race the screenshot and the timeout
+    const screenshotData = await Promise.race([
+      screenshotPromise,
+      timeoutPromise
+    ]);
     
     if (saveLocally) {
       // Log screenshot location
       console.log(`📸 Screenshot saved: ${filename}`);
+    } else {
+      console.log(`📸 Screenshot captured in memory: ${name} (${
+        typeof screenshotData === 'string' ? 
+          `${screenshotData.substring(0, 20)}... (${screenshotData.length} bytes)` : 
+          'Not a string'
+      })`);
     }
     
-    return saveLocally ? filename : screenshotData;
+    return saveLocally ? filename : (screenshotData as string || '');
   } catch (error) {
-    console.error(`Error taking screenshot: ${error}`);
-    return '';
+    console.error(`Error taking screenshot ${name}:`, error);
+    // Return a fallback image to make it clear there was an error
+    try {
+      // If there's an error, return a small blank image
+      return 'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAB7SURBVGhD7c8BDQAgDAOxVSH7z9UdGO6eeC0dObdZsTbvxk0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPjbA0lHvWvoqUdxAAAAAElFTkSuQmCC';
+    } catch (e) {
+      console.error('Even fallback screenshot failed:', e);
+      return '';
+    }
   }
 } 

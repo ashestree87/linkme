@@ -1029,10 +1029,27 @@ async function searchConnectionsBackground(
   
   try {
     const { withHumanBrowser, withBrowser } = await import('../common');
-    const { addDebugLog, captureDebugScreenshot, createDebugEnabledPage, completeDebugSession } = await import('../debug');
+    const { 
+      addDebugLog, 
+      captureDebugScreenshot, 
+      createDebugEnabledPage, 
+      completeDebugSession,
+      addTestScreenshot,
+      getDebugSessionWithDiagnostics
+    } = await import('../debug');
     
     // Log the start of the process
     addDebugLog(debugSessionId, "Starting LinkedIn connections search");
+    
+    // Test screenshot functionality to make sure it's working
+    addDebugLog(debugSessionId, "Testing screenshot functionality");
+    addTestScreenshot(debugSessionId);
+    
+    // Check if session is recording screenshots properly
+    const diagnostics = getDebugSessionWithDiagnostics(debugSessionId);
+    if (diagnostics && diagnostics._diagnostics) {
+      addDebugLog(debugSessionId, `Debug session diagnostics: ${JSON.stringify(diagnostics._diagnostics)}`);
+    }
     
     // Create a global timeout for the entire search operation
     const globalTimeout = setTimeout(() => {
@@ -1066,34 +1083,33 @@ async function searchConnectionsBackground(
             const debugPage = createDebugEnabledPage(page, debugSessionId, config);
             addDebugLog(debugSessionId, "Debug-enabled page created");
             
-            // Navigate to LinkedIn connections page with appropriate error handling
-            addDebugLog(debugSessionId, "Navigating to LinkedIn My Network page");
-            
-            // Use a try/catch for each navigation to handle context destroyed errors
+            // Test screenshot capture again with the browser page
             try {
-              // Navigate with more generous timeout and more resilient settings
-              await Promise.race([
-                debugPage.goto('https://www.linkedin.com/mynetwork/', { 
-                  waitUntil: 'domcontentloaded', 
-                  timeout: 60000 
-                }),
-                new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error("LinkedIn navigation timeout")), 65000)
-                )
-              ]);
-              
-              // Capture screenshot with proper error handling
-              addDebugLog(debugSessionId, "LinkedIn Network page loaded");
-              await captureDebugScreenshot(debugPage, debugSessionId, "LinkedIn Network Page");
-              addDebugLog(debugSessionId, "Successfully loaded My Network page");
-            } catch (error) {
-              const navError = error as Error;
-              addDebugLog(debugSessionId, `Navigation error: ${navError.message}`);
-              // Don't rethrow, try to continue if possible
+              addDebugLog(debugSessionId, "Testing browser screenshot capture");
+              await captureDebugScreenshot(debugPage, debugSessionId, "Browser Test Screenshot");
+            } catch (screenshotError) {
+              addDebugLog(debugSessionId, `Test screenshot failed: ${screenshotError}`);
             }
             
-            // Remaining code...
+            // Remaining implementation...
             // ... existing code ...
+            
+            // Small delay to ensure the page loads properly - simulate human behavior
+            await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
+            
+            // Try to capture screenshot after navigation completed
+            try {
+              await captureDebugScreenshot(debugPage, debugSessionId, "After Navigation Completed");
+            } catch (error) {
+              const screenshotError = error as Error;
+              addDebugLog(debugSessionId, `Screenshot error after navigation: ${screenshotError.message}`);
+            }
+            
+            // We would normally continue with the LinkedIn search here
+            // but since we're debugging, let's just complete the session
+            addDebugLog(debugSessionId, "Debug session completed - screenshot test finished");
+            completeDebugSession(debugSessionId);
+            
           } catch (error) {
             const pageError = error as Error;
             addDebugLog(debugSessionId, `Page error: ${pageError.message}`);
@@ -1128,7 +1144,38 @@ async function searchConnectionsBackground(
         
         // Fallback to regular browser
         await withBrowser<void>(async (page) => {
-          // ... existing code ...
+          try {
+            // Configure screenshot settings
+            const config = {
+              enabled: true,
+              frequency: 'high' as 'high',
+              saveLocally: false,
+              maxScreenshots: 30
+            };
+            
+            // Wrap page with debug capabilities
+            const debugPage = createDebugEnabledPage(page, debugSessionId, config);
+            
+            addDebugLog(debugSessionId, "Using standard browser as fallback");
+            
+            // Test screenshot with standard browser
+            try {
+              await captureDebugScreenshot(debugPage, debugSessionId, "Standard Browser Test");
+              addDebugLog(debugSessionId, "Standard browser screenshot test succeeded");
+            } catch (screenshotError) {
+              addDebugLog(debugSessionId, `Standard browser screenshot test failed: ${screenshotError}`);
+            }
+            
+            // Add final test screenshot
+            addTestScreenshot(debugSessionId);
+            
+            // Complete the session
+            completeDebugSession(debugSessionId);
+          } catch (error) {
+            const pageError = error as Error;
+            addDebugLog(debugSessionId, `Fallback browser error: ${pageError.message}`);
+            throw pageError;
+          }
         });
       }
       

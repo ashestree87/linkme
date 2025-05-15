@@ -493,11 +493,61 @@ export function createDebugEnabledPage(
  */
 export async function captureDebugScreenshot(page: Page, sessionId: string, name: string): Promise<void> {
   try {
-    const data = await takeScreenshot(page, name, false);
-    addDebugScreenshot(sessionId, name, data);
-    addDebugLog(sessionId, `Captured screenshot: ${name}`);
+    addDebugLog(sessionId, `Attempting to capture screenshot: ${name}`);
+    
+    // Check session exists
+    const session = activeSessions.get(sessionId);
+    if (!session) {
+      addDebugLog(sessionId, `Error: Session ${sessionId} not found when trying to capture screenshot: ${name}`);
+      return;
+    }
+    
+    // Verify page is valid
+    if (!page) {
+      addDebugLog(sessionId, `Error: Page is null or undefined when trying to capture screenshot: ${name}`);
+      return;
+    }
+    
+    // Add timeout protection to prevent hanging
+    const screenshotPromise = async () => {
+      addDebugLog(sessionId, `Calling takeScreenshot for: ${name}`);
+      const data = await takeScreenshot(page, name, false);
+      addDebugLog(sessionId, `Screenshot data received: ${data ? 'Yes' : 'No'} (${data ? data.length : 0} bytes)`);
+      return data;
+    };
+    
+    const timeoutPromise = new Promise<string>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Screenshot capture timed out after 15 seconds for: ${name}`));
+      }, 15000);
+    });
+    
+    // Use Promise.race to add timeout protection
+    const data = await Promise.race([
+      screenshotPromise(),
+      timeoutPromise
+    ]);
+    
+    // Check if data was actually received
+    if (!data) {
+      addDebugLog(sessionId, `Warning: Empty screenshot data received for: ${name}`);
+      // Add a placeholder image to the debug session
+      addDebugScreenshot(sessionId, `${name} (Error: Empty)`, 
+        'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAB7SURBVGhD7c8BDQAgDAOxVSH7z9UdGO6eeC0dObdZsTbvxk0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPjbA0lHvWvoqUdxAAAAAElFTkSuQmCC');
+    } else {
+      addDebugScreenshot(sessionId, name, data);
+      addDebugLog(sessionId, `Successfully captured screenshot: ${name}`);
+    }
   } catch (e) {
-    addDebugLog(sessionId, `Error capturing screenshot ${name}: ${e}`);
+    const error = e as Error;
+    addDebugLog(sessionId, `Error capturing screenshot ${name}: ${error.message}`);
+    if (error.stack) {
+      addDebugLog(sessionId, `Error stack: ${error.stack.split('\n')[0]}`);
+    }
+    
+    // Add a placeholder error image to the debug session so the user knows there was an attempt
+    addDebugScreenshot(sessionId, `${name} (Error)`, 
+      'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAB7SURBVGhD7c8BDQAgDAOxVSH7z9UdGO6eeC0dObdZsTbvxk0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPjbA0lHvWvoqUdxAAAAAElFTkSuQmCC');
   }
 }
 
@@ -567,4 +617,62 @@ export function generateLatestScreenshotHtml(sessionId: string): string {
     </body>
     </html>
   `;
+}
+
+/**
+ * Add a test screenshot to a debug session to verify screenshot functionality
+ * This can be used to check if the screenshot system is working properly
+ * @param sessionId Debug session ID
+ */
+export function addTestScreenshot(sessionId: string): void {
+  // Get the debug session
+  const session = activeSessions.get(sessionId);
+  if (!session) {
+    console.error(`Cannot add test screenshot: Session ${sessionId} not found`);
+    return;
+  }
+  
+  // Add a test log
+  addDebugLog(sessionId, 'Adding test screenshot to verify screenshot functionality');
+  
+  // Base64 encoded 1x1 pixel red PNG
+  const testImageData = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  
+  // Add the test screenshot
+  addDebugScreenshot(sessionId, 'Test Screenshot', testImageData);
+  
+  // Log success
+  addDebugLog(sessionId, 'Test screenshot added successfully');
+  
+  // Manually check the debug session
+  const updatedSession = activeSessions.get(sessionId);
+  if (updatedSession) {
+    const screenshotCount = updatedSession.screenshots.length;
+    addDebugLog(sessionId, `Session has ${screenshotCount} screenshots after adding test screenshot`);
+  }
+}
+
+/**
+ * Get debug session information with diagnostic info
+ * @param sessionId Debug session ID
+ * @returns Debug session or null if not found, with diagnostic info
+ */
+export function getDebugSessionWithDiagnostics(sessionId: string): any {
+  const session = activeSessions.get(sessionId);
+  if (!session) {
+    return null;
+  }
+  
+  // Create a copy with diagnostics
+  return {
+    ...session,
+    _diagnostics: {
+      activeSessions: activeSessions.size,
+      sessionExists: true,
+      screenshotCount: session.screenshots.length,
+      logCount: session.logs.length,
+      hasScreenshots: session.screenshots.length > 0,
+      timestamp: new Date().toISOString()
+    }
+  };
 } 
