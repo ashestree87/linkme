@@ -1,5 +1,17 @@
 import { Lead } from './common';
-import type { ScheduledHandler, ScheduledEvent, ExecutionContext } from '@cloudflare/workers-types';
+// Remove the incorrect import and define the types directly
+// import type { ScheduledHandler, ScheduledEvent, ExecutionContext } from '@cloudflare/workers-types';
+
+// Define the necessary types locally
+interface ScheduledEvent {
+  scheduledTime: number;
+  cron: string;
+}
+
+interface ExecutionContext {
+  waitUntil(promise: Promise<any>): void;
+  passThroughOnException(): void;
+}
 
 interface LeadWithTimestamp extends Lead {
   next_action_at: number;
@@ -13,7 +25,7 @@ export interface Env {
 
 interface SchedulerHandler {
   scheduled(
-    event: any,
+    event: ScheduledEvent,
     env: Env,
     ctx: ExecutionContext
   ): Promise<void>;

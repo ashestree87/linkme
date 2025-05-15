@@ -23,7 +23,13 @@ export default {
             <div class="bg-gray-50 p-4 rounded">
               <p><strong>URL:</strong> ${request.url}</p>
               <p><strong>Method:</strong> ${request.method}</p>
-              <p><strong>Headers:</strong> ${JSON.stringify(Object.fromEntries([...request.headers]))}</p>
+              <p><strong>Headers:</strong> ${(() => {
+                const headersObj: Record<string, string> = {};
+                request.headers.forEach((value, key) => {
+                  headersObj[key] = value;
+                });
+                return JSON.stringify(headersObj);
+              })()}</p>
             </div>
           </div>
 

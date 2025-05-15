@@ -96,6 +96,10 @@ export default {
     // Get all leads
     const allLeads = await getLeadsFromKV(env);
     
+    // Get view from the URL
+    const url = new URL(request.url);
+    const view = url.searchParams.get('view') || 'leads';
+    
     // Filter leads by status if needed
     const leads = filterStatus === 'all' 
       ? allLeads 
@@ -219,6 +223,10 @@ export default {
    * Show the connections view page
    */
   async showConnectionsView(request: Request, env: AdminEnv): Promise<Response> {
+    // Get view from the URL
+    const url = new URL(request.url);
+    const view = url.searchParams.get('view') || 'connections';
+    
     const html = generateConnectionsView();
     
     return new Response(html, {
@@ -504,7 +512,7 @@ export default {
     } catch (error) {
       console.error('Lead details error:', error);
       return new Response(
-        generateLeadDetailsError(error),
+        generateLeadDetailsError(error instanceof Error ? error : String(error)),
         { headers: { 'Content-Type': 'text/html' } }
       );
     }
