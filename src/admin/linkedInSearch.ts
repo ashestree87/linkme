@@ -100,36 +100,60 @@ export async function searchLinkedInUsers(env: AdminEnv, keywords: string, locat
     }
     
     const results = await withBrowser(async (page) => {
-      // Build search URL with parameters
+      // For empty searches, use a default view that shows recent profiles
       let searchUrl = 'https://www.linkedin.com/sales/search/people?';
+      
+      // Create URL parameters
       const params = new URLSearchParams();
       
-      if (keywords) {
-        params.append('keywords', keywords);
+      // If all fields are empty, set a default filter to show all leads
+      const allEmpty = !keywords && !location && !industry;
+      
+      if (allEmpty) {
+        // Add parameters to show all leads (recent searches)
+        params.append('viewAllFilters', 'true');
+        params.append('sortCriteria', 'CREATED_TIME');
+      } else {
+        // Add any non-empty filters
+        if (keywords) {
+          params.append('keywords', keywords);
+        }
+        
+        if (location) {
+          params.append('geoIncluded', location);
+        }
+        
+        if (industry) {
+          params.append('industryIncluded', industry);
+        }
       }
       
-      if (location) {
-        params.append('geoIncluded', location);
-      }
-      
-      if (industry) {
-        params.append('industryIncluded', industry);
-      }
-      
+      // Add parameters to the URL
       searchUrl += params.toString();
+      
+      console.log('Searching LinkedIn with URL:', searchUrl);
       
       // Navigate to search URL
       await page.goto(searchUrl, { waitUntil: 'networkidle0' });
       
-      // Give the page time to load all results
-      await page.waitForTimeout(3000);
+      // Give the page time to load all results - using sleep instead of waitForTimeout
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
       // Extract profile information
       const profiles = await page.evaluate(() => {
-        const results: LinkedInProfile[] = [];
+        const results: Array<{
+          urn: string;
+          name: string;
+          title: string;
+          company: string;
+          location: string;
+          imageUrl: string | null;
+        }> = [];
         
         // Get all result cards
         const cards = document.querySelectorAll('[data-test-search-result]');
+        
+        console.log('Found cards:', cards.length);
         
         // Extract information from each card
         cards.forEach((card) => {
@@ -177,6 +201,82 @@ export async function searchLinkedInUsers(env: AdminEnv, keywords: string, locat
         
         return results;
       });
+      
+      // If the profiles array is empty, try to get recent connections
+      if (profiles.length === 0 && allEmpty) {
+        // Navigate to the connections page instead
+        await page.goto('https://www.linkedin.com/sales/homepage', { waitUntil: 'networkidle0' });
+        // Use sleep instead of waitForTimeout
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Try to extract recent connections from the homepage
+        const recentProfiles = await page.evaluate(() => {
+          const results: Array<{
+            urn: string;
+            name: string;
+            title: string;
+            company: string;
+            location: string;
+            imageUrl: string | null;
+          }> = [];
+          
+          // Look for recent connection cards on the homepage
+          const cards = document.querySelectorAll('.artdeco-card');
+          
+          cards.forEach((card) => {
+            try {
+              // Extract profile information
+              const nameEl = card.querySelector('a.ember-view strong');
+              if (!nameEl) return;
+              
+              const name = nameEl.textContent?.trim() || '';
+              
+              // Extract URN from the link
+              const linkEl = card.querySelector('a.ember-view');
+              const href = linkEl?.getAttribute('href') || '';
+              const urnMatch = href.match(/\/lead\/([^\/]+)/);
+              const urn = urnMatch ? urnMatch[1] : '';
+              
+              // Extract title and company
+              const subtitleEl = card.querySelector('.artdeco-entity-lockup__subtitle');
+              const subtitle = subtitleEl?.textContent?.trim() || '';
+              
+              // Split subtitle into title and company if possible
+              let title = subtitle;
+              let company = '';
+              
+              if (subtitle.includes(' at ')) {
+                const parts = subtitle.split(' at ');
+                title = parts[0].trim();
+                company = parts[1].trim();
+              }
+              
+              // Extract image
+              const imgEl = card.querySelector('img');
+              const imageUrl = imgEl?.getAttribute('src') || null;
+              
+              // Add to results if we have at least a name
+              if (name && urn) {
+                results.push({
+                  urn,
+                  name,
+                  title,
+                  company,
+                  location: '',
+                  imageUrl
+                });
+              }
+            } catch (e) {
+              console.error('Error parsing card:', e);
+            }
+          });
+          
+          return results;
+        });
+        
+        // Add any found profiles to the results
+        return recentProfiles;
+      }
       
       return profiles;
     });

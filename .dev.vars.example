@@ -1,0 +1,14 @@
+# LinkedIn Authentication Cookies
+# You need to get these from your browser after logging into LinkedIn Sales Navigator
+
+# The li_at cookie (main authentication)
+LI_AT=YOUR_LI_AT_COOKIE_HERE
+
+# The JSESSIONID cookie (for CSRF protection)
+CSRF=YOUR_JSESSIONID_COOKIE_HERE
+
+# User agent to use for LinkedIn requests
+USERAGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36
+
+# Secret for webhook authentication
+WEBHOOK_SECRET=YOUR_WEBHOOK_SECRET_HERE 
