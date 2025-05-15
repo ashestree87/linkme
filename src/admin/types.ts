@@ -6,6 +6,7 @@ import { Lead } from '../common';
 export interface LeadWithMeta extends Lead {
   next_action_at?: number;
   retry_count?: number;
+  debug_session_id?: string;
 }
 
 /**

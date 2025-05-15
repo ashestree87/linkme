@@ -9,6 +9,7 @@ A LinkedIn automation and lead management tool built on Cloudflare Workers.
 - Lead tracking and status management
 - Automated connection requests and messages
 - CSV import/export functionality
+- Real-time screenshot feedback for automation visibility
 
 ## Setup
 
@@ -126,6 +127,31 @@ npm run deploy
 2. Upload leads via CSV or add them manually
 3. Monitor lead statuses and conversion rates
 4. Search for new leads directly from LinkedIn
+5. View real-time screenshots of LinkedIn automation in progress
+
+## Screenshot Feedback
+
+LinkMe provides real-time visual feedback of LinkedIn automation through screenshots:
+
+### How it works
+
+- Every LinkedIn interaction is automatically documented with screenshots
+- Screenshots are captured at key moments (profile view, connection dialog, confirmation)
+- Each lead with automation history has a "Screenshots" button in the admin dashboard
+- Click the button to see a timeline of the automation process with visual evidence
+
+### Benefits
+
+- See exactly what happened during each automated interaction
+- Debug issues by examining the screenshots when processes fail
+- Verify LinkedIn UI changes haven't broken automation
+- Get confidence that the system is working as expected
+
+### Where to find screenshots
+
+- In the leads table: Look for the camera icon next to any lead with available screenshots
+- In lead details: Detailed view shows the most recent screenshot inline
+- Debug viewer: Complete timeline with all screenshots and logs
 
 ## License
 

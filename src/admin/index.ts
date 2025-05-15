@@ -1,5 +1,5 @@
 import { AdminEnv, LeadWithMeta, LinkedInProfile } from './types';
-import { getLeadsFromKV, parseCSV, generateDashboardStats } from './utils';
+import { getLeadsFromKV, parseCSV } from './utils';
 import { generateLeadsTable, generateLeadDetails, generateLeadDetailsError } from './leadsTable';
 import { generateConnectionsView, handleLinkedInSearch, handleImportConnection, handleSearchConnections } from './linkedInSearch';
 
@@ -522,4 +522,75 @@ export default {
       );
     }
   },
-}; 
+};
+
+/**
+ * Generate dashboard stats
+ */
+export function generateDashboardStats(allLeads: LeadWithMeta[]): string {
+  // Count leads by status
+  const countByStatus: Record<string, number> = {
+    new: 0,
+    invited: 0,
+    accepted: 0,
+    done: 0,
+    paused: 0,
+    failed: 0
+  };
+  
+  allLeads.forEach(lead => {
+    const status = lead.status || 'new';
+    countByStatus[status] = (countByStatus[status] || 0) + 1;
+  });
+  
+  // Generate stats HTML
+  const stats = `
+    <div class="mb-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div class="bg-white shadow-md rounded-lg p-4 border border-gray-200">
+        <h3 class="text-sm font-medium text-gray-500">Total Leads</h3>
+        <p class="mt-1 text-2xl font-semibold">${allLeads.length}</p>
+      </div>
+      <div class="bg-white shadow-md rounded-lg p-4 border border-gray-200">
+        <h3 class="text-sm font-medium text-gray-500">New</h3>
+        <p class="mt-1 text-2xl font-semibold text-blue-600">${countByStatus.new || 0}</p>
+      </div>
+      <div class="bg-white shadow-md rounded-lg p-4 border border-gray-200">
+        <h3 class="text-sm font-medium text-gray-500">Invited</h3>
+        <p class="mt-1 text-2xl font-semibold text-yellow-600">${countByStatus.invited || 0}</p>
+      </div>
+      <div class="bg-white shadow-md rounded-lg p-4 border border-gray-200">
+        <h3 class="text-sm font-medium text-gray-500">Accepted</h3>
+        <p class="mt-1 text-2xl font-semibold text-green-600">${countByStatus.accepted || 0}</p>
+      </div>
+      <div class="bg-white shadow-md rounded-lg p-4 border border-gray-200">
+        <h3 class="text-sm font-medium text-gray-500">Done</h3>
+        <p class="mt-1 text-2xl font-semibold text-purple-600">${countByStatus.done || 0}</p>
+      </div>
+      <div class="bg-white shadow-md rounded-lg p-4 border border-gray-200">
+        <h3 class="text-sm font-medium text-gray-500">Failed/Paused</h3>
+        <p class="mt-1 text-2xl font-semibold text-red-600">${(countByStatus.failed || 0) + (countByStatus.paused || 0)}</p>
+      </div>
+    </div>
+  `;
+
+  // Add feature highlight about screenshots
+  const infoPanel = `
+    <div class="mb-6 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+      <div class="flex items-start">
+        <div class="flex-shrink-0 mt-0.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <h3 class="text-sm font-medium text-indigo-800">Real-time Screenshot Feedback</h3>
+          <div class="mt-1 text-sm text-indigo-700">
+            <p>All LinkedIn interactions now include screenshot captures so you can see exactly what's happening. Look for the <span class="inline-flex items-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Screenshots</span> button next to leads to view their automation progress.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  return stats + infoPanel;
+} 
