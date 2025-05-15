@@ -159,7 +159,7 @@ export default {
               <h3 class="font-medium text-gray-700">${screenshot.stage}</h3>
             </div>
             <div class="p-4">
-              <img src="data:image/png;base64,${screenshot.data}" alt="${screenshot.stage}" class="w-full border border-gray-300 rounded">
+              <img src="data:image/jpeg;base64,${screenshot.data}" alt="${screenshot.stage}" class="w-full border border-gray-300 rounded">
             </div>
           </div>
         `).join('');

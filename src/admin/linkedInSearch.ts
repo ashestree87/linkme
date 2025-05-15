@@ -482,115 +482,103 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
       });
     }
     
-    // Use browser to search for connections
-    const results = await withBrowser(async (page) => {
-      try {
-        // Go to LinkedIn network page where connections are listed
-        await page.goto('https://www.linkedin.com/mynetwork/invite-connect/connections/', { 
-          waitUntil: 'networkidle0',
-          timeout: 45000 
-        });
-        
-        // Wait for connections to load
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        
-        // Extract connections that match our criteria
-        return await page.evaluate((searchTitle, searchCompany, searchIndustry) => {
-          const results: Array<{
-            urn: string;
-            name: string;
-            title: string;
-            company: string;
-            location: string;
-            imageUrl: string | null;
-          }> = [];
-          const connectionCards = document.querySelectorAll('.mn-connection-card');
-          
-          console.log("Found connection cards:", connectionCards.length);
-          
-          // Convert NodeList to Array to avoid iterator issues
-          Array.from(connectionCards).forEach(card => {
-            try {
-              // Extract basic info
-              const nameEl = card.querySelector('.mn-connection-card__name');
-              const occupationEl = card.querySelector('.mn-connection-card__occupation');
-              const imageEl = card.querySelector('.presence-entity__image');
-              
-              if (!nameEl || !occupationEl) return;
-              
-              const name = nameEl.textContent?.trim() || '';
-              const occupation = occupationEl.textContent?.trim() || '';
-              const imageUrl = imageEl ? (imageEl as HTMLImageElement).src : null;
-              
-              // Extract profile link to get URN
-              const linkEl = card.querySelector('.mn-connection-card__link');
-              const profileUrl = linkEl ? (linkEl as HTMLAnchorElement).href : '';
-              
-              // Extract URN from URL if possible
-              let urn = '';
-              const urlParts = profileUrl.split('/');
-              if (urlParts.length > 0) {
-                urn = urlParts[urlParts.length - 1] || urlParts[urlParts.length - 2] || '';
-              }
-              
-              // Parse occupation into title and company
-              let title = occupation;
-              let company = '';
-              
-              if (occupation.includes(' at ')) {
-                const parts = occupation.split(' at ');
-                title = parts[0].trim();
-                company = parts[1].trim();
-              }
-              
-              // Filter based on search criteria
-              const matchesTitle = !searchTitle || title.toLowerCase().includes(searchTitle.toLowerCase());
-              const matchesCompany = !searchCompany || company.toLowerCase().includes(searchCompany.toLowerCase());
-              // We don't have industry info in the connections list, so skip this filter if it's provided
-              const matchesIndustry = !searchIndustry;
-              
-              if (matchesTitle && matchesCompany && matchesIndustry) {
-                results.push({
-                  urn,
-                  name,
-                  title,
-                  company,
-                  location: '',  // Location isn't available in the connections list
-                  imageUrl
-                });
-              }
-            } catch (e) {
-              console.error('Error parsing connection card:', e);
-            }
-          });
-          
-          return results;
-        }, title, company, industry);
-      } catch (error) {
-        console.error("LinkedIn connection search navigation error:", error);
-        // Try alternative approach to fetch connections
+    // Create a timeout for the operation
+    const TIMEOUT_DURATION = 30000; // 30 seconds
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let isTimedOut = false;
+    
+    // Create a promise that resolves with the timeout error
+    const timeoutPromise = new Promise<LinkedInProfile[]>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        isTimedOut = true;
+        reject(new Error("Search operation timed out after 30 seconds"));
+      }, TIMEOUT_DURATION);
+    });
+    
+    let profiles: LinkedInProfile[] = [];
+    let debugScreenshots: Array<{stage: string, data: string}> = [];
+    
+    try {
+      // Try to get connections with the browser
+      const searchPromise = withBrowser<LinkedInProfile[]>(async (page) => {
+        const logSteps: string[] = [];
         try {
-          // Go to main connections page
-          await page.goto('https://www.linkedin.com/connections/connections-i-have/', {
-            waitUntil: 'networkidle0',
-            timeout: 45000
-          });
+          logSteps.push("Starting connection search");
           
-          await page.waitForSelector('.mn-connections__search-input', {timeout: 10000});
-          
-          // If there's a search box, try to use it
-          if (title || company) {
-            // Type search query
-            const searchQuery = [title, company].filter(Boolean).join(' ');
-            await page.type('.mn-connections__search-input', searchQuery);
-            await page.keyboard.press('Enter');
-            
-            // Wait for search results to load
-            await new Promise(resolve => setTimeout(resolve, 5000));
+          // Take a screenshot before navigation
+          try {
+            const beforeScreenshot = await page.screenshot({ encoding: "base64" });
+            debugScreenshots.push({
+              stage: "before_navigation",
+              data: beforeScreenshot
+            });
+          } catch (screenshotError) {
+            logSteps.push(`Screenshot error: ${screenshotError}`);
           }
           
-          // Extract the connections using the same code as above
-          return await page.evaluate((searchTitle, searchCompany) => {
+          // First try - new LinkedIn UI approach
+          logSteps.push("Trying modern LinkedIn UI connections page");
+          await page.goto('https://www.linkedin.com/mynetwork/', { 
+            waitUntil: 'networkidle0',
+            timeout: 90000 
+          });
+          
+          // Wait for connections section to load
+          logSteps.push("Waiting for page to load");
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Take a screenshot after navigation
+          try {
+            const afterNavScreenshot = await page.screenshot({ encoding: "base64" });
+            debugScreenshots.push({
+              stage: "after_mynetwork_navigation",
+              data: afterNavScreenshot
+            });
+          } catch (screenshotError) {
+            logSteps.push(`Screenshot error: ${screenshotError}`);
+          }
+          
+          // Try to find connections section
+          const foundConnectionsSection = await page.evaluate(() => {
+            return !!document.querySelector('.mn-connections') || 
+                  !!document.querySelector('.artdeco-card__actions') ||
+                  !!document.querySelector('[data-control-name="connections"]');
+          });
+          
+          logSteps.push(`Found connections section: ${foundConnectionsSection}`);
+          
+          if (foundConnectionsSection) {
+            // Try to click "Connections" to navigate to connections page
+            try {
+              await page.click('[data-control-name="connections"]');
+              logSteps.push("Clicked on Connections link");
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            } catch (clickError) {
+              logSteps.push(`Could not click connections link: ${clickError}`);
+            }
+          }
+          
+          // Take another screenshot
+          try {
+            const afterClickScreenshot = await page.screenshot({ encoding: "base64" });
+            debugScreenshots.push({
+              stage: "after_connections_click",
+              data: afterClickScreenshot
+            });
+          } catch (screenshotError) {
+            logSteps.push(`Screenshot error: ${screenshotError}`);
+          }
+          
+          // Try multiple selectors for connection cards
+          const possibleCardSelectors = [
+            '.mn-connection-card',
+            '.artdeco-entity-lockup',
+            '.connection-card',
+            '.connection-item'
+          ];
+          
+          // Extract connections that match our criteria
+          let results = await page.evaluate((searchTitle, searchCompany, searchIndustry, selectors) => {
             const results: Array<{
               urn: string;
               name: string;
@@ -600,15 +588,74 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
               imageUrl: string | null;
             }> = [];
             
-            // Look for connection cards
-            const cards = document.querySelectorAll('.mn-connection-card');
+            // Try each selector
+            let cards: NodeListOf<Element> | null = null;
+            let usedSelector = '';
             
+            for (const selector of selectors) {
+              const foundCards = document.querySelectorAll(selector);
+              if (foundCards && foundCards.length > 0) {
+                cards = foundCards;
+                usedSelector = selector;
+                break;
+              }
+            }
+            
+            console.log(`Found ${cards ? cards.length : 0} connection cards using selector: ${usedSelector}`);
+            
+            if (!cards || cards.length === 0) {
+              // No cards found with any selector
+              return { results, debug: { 
+                cardsFound: 0, 
+                usedSelector,
+                html: document.body.innerHTML.substring(0, 1000) 
+              }};
+            }
+            
+            // Convert NodeList to Array to avoid iterator issues
             Array.from(cards).forEach(card => {
               try {
-                // Same extraction logic as before
-                const nameEl = card.querySelector('.mn-connection-card__name');
-                const occupationEl = card.querySelector('.mn-connection-card__occupation');
-                const imageEl = card.querySelector('.presence-entity__image');
+                // Try multiple selectors for name
+                const nameSelectors = [
+                  '.mn-connection-card__name',
+                  '.connection-card__name',
+                  '.artdeco-entity-lockup__title',
+                  '.entity-result__title'
+                ];
+                
+                let nameEl = null;
+                for (const selector of nameSelectors) {
+                  nameEl = card.querySelector(selector);
+                  if (nameEl) break;
+                }
+                
+                // Try multiple selectors for occupation
+                const occupationSelectors = [
+                  '.mn-connection-card__occupation',
+                  '.connection-card__occupation',
+                  '.artdeco-entity-lockup__subtitle',
+                  '.entity-result__primary-subtitle'
+                ];
+                
+                let occupationEl = null;
+                for (const selector of occupationSelectors) {
+                  occupationEl = card.querySelector(selector);
+                  if (occupationEl) break;
+                }
+                
+                // Try multiple selectors for image
+                const imageSelectors = [
+                  '.presence-entity__image',
+                  '.connection-card__image',
+                  '.artdeco-entity-lockup__image img',
+                  '.ivm-view-attr__img--centered'
+                ];
+                
+                let imageEl = null;
+                for (const selector of imageSelectors) {
+                  imageEl = card.querySelector(selector);
+                  if (imageEl) break;
+                }
                 
                 if (!nameEl || !occupationEl) return;
                 
@@ -616,17 +663,36 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
                 const occupation = occupationEl.textContent?.trim() || '';
                 const imageUrl = imageEl ? (imageEl as HTMLImageElement).src : null;
                 
-                // Extract URN from link
-                const linkEl = card.querySelector('a');
-                const profileUrl = linkEl ? linkEl.href : '';
+                // Extract profile link to get URN
+                const linkSelectors = [
+                  '.mn-connection-card__link',
+                  '.connection-card__link',
+                  'a'
+                ];
                 
-                let urn = '';
-                if (profileUrl) {
-                  const match = profileUrl.match(/\/in\/([^\/]+)/);
-                  urn = match ? match[1] : '';
+                let linkEl = null;
+                for (const selector of linkSelectors) {
+                  linkEl = card.querySelector(selector);
+                  if (linkEl) break;
                 }
                 
-                // Parse occupation
+                const profileUrl = linkEl ? (linkEl as HTMLAnchorElement).href : '';
+                
+                // Extract URN from URL if possible
+                let urn = '';
+                if (profileUrl) {
+                  // Try to match /in/username pattern
+                  const match = profileUrl.match(/\/in\/([^\/]+)/);
+                  if (match) {
+                    urn = match[1];
+                  } else {
+                    // Fall back to last part of URL
+                    const urlParts = profileUrl.split('/');
+                    urn = urlParts[urlParts.length - 1] || urlParts[urlParts.length - 2] || '';
+                  }
+                }
+                
+                // Parse occupation into title and company
                 let title = occupation;
                 let company = '';
                 
@@ -636,17 +702,19 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
                   company = parts[1].trim();
                 }
                 
-                // Only add if it matches filters
+                // Filter based on search criteria
                 const matchesTitle = !searchTitle || title.toLowerCase().includes(searchTitle.toLowerCase());
                 const matchesCompany = !searchCompany || company.toLowerCase().includes(searchCompany.toLowerCase());
+                // We don't have industry info in the connections list, so skip this filter if it's provided
+                const matchesIndustry = !searchIndustry;
                 
-                if (matchesTitle && matchesCompany) {
+                if (matchesTitle && matchesCompany && matchesIndustry) {
                   results.push({
                     urn,
                     name,
                     title,
                     company,
-                    location: '',
+                    location: '',  // Location isn't available in the connections list
                     imageUrl
                   });
                 }
@@ -655,23 +723,447 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
               }
             });
             
-            return results;
-          }, title, company);
-        } catch (fallbackError) {
-          console.error("Even fallback connection search failed:", fallbackError);
-          throw new Error("Failed to access LinkedIn connections. Please check your authentication cookies.");
+            return { 
+              results, 
+              debug: { 
+                cardsFound: cards.length, 
+                usedSelector,
+                resultsFound: results.length
+              } 
+            };
+          }, title, company, industry, possibleCardSelectors);
+          
+          logSteps.push(`Extraction result: ${JSON.stringify(results.debug)}`);
+          
+          // If no results found with the first approach, try the direct connections page
+          if (results.results.length === 0) {
+            logSteps.push("No results found, trying direct connections page");
+            
+            // Go to the direct connections page
+            await page.goto('https://www.linkedin.com/mynetwork/invite-connect/connections/', { 
+              waitUntil: 'networkidle0',
+              timeout: 90000 
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            // Take a screenshot of the connections page
+            try {
+              const connectionsPageScreenshot = await page.screenshot({ encoding: "base64" });
+              debugScreenshots.push({
+                stage: "connections_page",
+                data: connectionsPageScreenshot
+              });
+            } catch (screenshotError) {
+              logSteps.push(`Screenshot error: ${screenshotError}`);
+            }
+            
+            // Try again with the same selectors
+            results = await page.evaluate((searchTitle, searchCompany, searchIndustry, selectors) => {
+              // Same evaluation function as above
+              // This is repeated for clarity and to allow for different selector handling if needed
+              const results: Array<{
+                urn: string;
+                name: string;
+                title: string;
+                company: string;
+                location: string;
+                imageUrl: string | null;
+              }> = [];
+              
+              // Try each selector
+              let cards: NodeListOf<Element> | null = null;
+              let usedSelector = '';
+              
+              for (const selector of selectors) {
+                const foundCards = document.querySelectorAll(selector);
+                if (foundCards && foundCards.length > 0) {
+                  cards = foundCards;
+                  usedSelector = selector;
+                  break;
+                }
+              }
+              
+              console.log(`Found ${cards ? cards.length : 0} connection cards using selector: ${usedSelector}`);
+              
+              if (!cards || cards.length === 0) {
+                // No cards found with any selector
+                return { results, debug: { 
+                  cardsFound: 0, 
+                  usedSelector,
+                  html: document.body.innerHTML.substring(0, 1000) 
+                }};
+              }
+              
+              // Process cards (same as above)
+              Array.from(cards).forEach(card => {
+                try {
+                  // Try multiple selectors for name
+                  const nameSelectors = [
+                    '.mn-connection-card__name',
+                    '.connection-card__name',
+                    '.artdeco-entity-lockup__title',
+                    '.entity-result__title'
+                  ];
+                  
+                  let nameEl = null;
+                  for (const selector of nameSelectors) {
+                    nameEl = card.querySelector(selector);
+                    if (nameEl) break;
+                  }
+                  
+                  // Try multiple selectors for occupation
+                  const occupationSelectors = [
+                    '.mn-connection-card__occupation',
+                    '.connection-card__occupation',
+                    '.artdeco-entity-lockup__subtitle',
+                    '.entity-result__primary-subtitle'
+                  ];
+                  
+                  let occupationEl = null;
+                  for (const selector of occupationSelectors) {
+                    occupationEl = card.querySelector(selector);
+                    if (occupationEl) break;
+                  }
+                  
+                  // Try multiple selectors for image
+                  const imageSelectors = [
+                    '.presence-entity__image',
+                    '.connection-card__image',
+                    '.artdeco-entity-lockup__image img',
+                    '.ivm-view-attr__img--centered'
+                  ];
+                  
+                  let imageEl = null;
+                  for (const selector of imageSelectors) {
+                    imageEl = card.querySelector(selector);
+                    if (imageEl) break;
+                  }
+                  
+                  if (!nameEl || !occupationEl) return;
+                  
+                  const name = nameEl.textContent?.trim() || '';
+                  const occupation = occupationEl.textContent?.trim() || '';
+                  const imageUrl = imageEl ? (imageEl as HTMLImageElement).src : null;
+                  
+                  // Extract profile link to get URN
+                  const linkSelectors = [
+                    '.mn-connection-card__link',
+                    '.connection-card__link',
+                    'a'
+                  ];
+                  
+                  let linkEl = null;
+                  for (const selector of linkSelectors) {
+                    linkEl = card.querySelector(selector);
+                    if (linkEl) break;
+                  }
+                  
+                  const profileUrl = linkEl ? (linkEl as HTMLAnchorElement).href : '';
+                  
+                  // Extract URN from URL if possible
+                  let urn = '';
+                  if (profileUrl) {
+                    // Try to match /in/username pattern
+                    const match = profileUrl.match(/\/in\/([^\/]+)/);
+                    if (match) {
+                      urn = match[1];
+                    } else {
+                      // Fall back to last part of URL
+                      const urlParts = profileUrl.split('/');
+                      urn = urlParts[urlParts.length - 1] || urlParts[urlParts.length - 2] || '';
+                    }
+                  }
+                  
+                  // Parse occupation into title and company
+                  let title = occupation;
+                  let company = '';
+                  
+                  if (occupation.includes(' at ')) {
+                    const parts = occupation.split(' at ');
+                    title = parts[0].trim();
+                    company = parts[1].trim();
+                  }
+                  
+                  // Filter based on search criteria
+                  const matchesTitle = !searchTitle || title.toLowerCase().includes(searchTitle.toLowerCase());
+                  const matchesCompany = !searchCompany || company.toLowerCase().includes(searchCompany.toLowerCase());
+                  const matchesIndustry = !searchIndustry; // No industry info
+                  
+                  if (matchesTitle && matchesCompany && matchesIndustry) {
+                    results.push({
+                      urn,
+                      name,
+                      title,
+                      company,
+                      location: '',
+                      imageUrl
+                    });
+                  }
+                } catch (e) {
+                  console.error('Error parsing connection card:', e);
+                }
+              });
+              
+              return { 
+                results, 
+                debug: { 
+                  cardsFound: cards.length, 
+                  usedSelector,
+                  resultsFound: results.length
+                } 
+              };
+            }, title, company, industry, possibleCardSelectors);
+            
+            logSteps.push(`Second extraction result: ${JSON.stringify(results.debug)}`);
+          }
+          
+          // If still no results, try the old connections page
+          if (results.results.length === 0) {
+            logSteps.push("Still no results, trying older connections page format");
+            
+            // Try the older connections page format
+            await page.goto('https://www.linkedin.com/connections/connections-i-have/', {
+              waitUntil: 'networkidle0',
+              timeout: 90000
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            // Take another screenshot
+            try {
+              const oldConnectionsPageScreenshot = await page.screenshot({ encoding: "base64" });
+              debugScreenshots.push({
+                stage: "old_connections_page",
+                data: oldConnectionsPageScreenshot
+              });
+            } catch (screenshotError) {
+              logSteps.push(`Screenshot error: ${screenshotError}`);
+            }
+            
+            // Search in the older format
+            const searchResults = await page.evaluate((searchTitle, searchCompany) => {
+              const results: Array<{
+                urn: string;
+                name: string;
+                title: string;
+                company: string;
+                location: string;
+                imageUrl: string | null;
+              }> = [];
+              
+              // Look for search input
+              const searchInput = document.querySelector('.mn-connections__search-input');
+              
+              // Get the page HTML for debugging
+              const pageHtml = document.body.innerHTML.substring(0, 1000);
+              
+              return {
+                results,
+                debug: {
+                  searchInputFound: !!searchInput,
+                  html: pageHtml
+                }
+              };
+            }, title, company);
+            
+            logSteps.push(`Old page analysis: ${JSON.stringify(searchResults.debug)}`);
+            
+            // If we found a search input, try to use it
+            if (searchResults.debug.searchInputFound) {
+              logSteps.push("Found search input, attempting to search");
+              
+              try {
+                await page.waitForSelector('.mn-connections__search-input', {timeout: 30000});
+                
+                if (title || company) {
+                  // Type search query
+                  const searchQuery = [title, company].filter(Boolean).join(' ');
+                  await page.type('.mn-connections__search-input', searchQuery);
+                  await page.keyboard.press('Enter');
+                  
+                  // Wait for search results to load
+                  await new Promise(resolve => setTimeout(resolve, 5000));
+                  
+                  // Take a screenshot after search
+                  try {
+                    const afterSearchScreenshot = await page.screenshot({ encoding: "base64" });
+                    debugScreenshots.push({
+                      stage: "after_search",
+                      data: afterSearchScreenshot
+                    });
+                  } catch (screenshotError) {
+                    logSteps.push(`Screenshot error: ${screenshotError}`);
+                  }
+                  
+                  // Extract results
+                  const searchResults = await page.evaluate((searchTitle, searchCompany) => {
+                    const results: Array<{
+                      urn: string;
+                      name: string;
+                      title: string;
+                      company: string;
+                      location: string;
+                      imageUrl: string | null;
+                    }> = [];
+                    
+                    // Look for connection cards
+                    const cards = document.querySelectorAll('.mn-connection-card');
+                    
+                    Array.from(cards).forEach(card => {
+                      try {
+                        // Same extraction logic as before
+                        const nameEl = card.querySelector('.mn-connection-card__name');
+                        const occupationEl = card.querySelector('.mn-connection-card__occupation');
+                        const imageEl = card.querySelector('.presence-entity__image');
+                        
+                        if (!nameEl || !occupationEl) return;
+                        
+                        const name = nameEl.textContent?.trim() || '';
+                        const occupation = occupationEl.textContent?.trim() || '';
+                        const imageUrl = imageEl ? (imageEl as HTMLImageElement).src : null;
+                        
+                        // Extract URN from link
+                        const linkEl = card.querySelector('a');
+                        const profileUrl = linkEl ? linkEl.href : '';
+                        
+                        let urn = '';
+                        if (profileUrl) {
+                          const match = profileUrl.match(/\/in\/([^\/]+)/);
+                          urn = match ? match[1] : '';
+                        }
+                        
+                        // Parse occupation
+                        let title = occupation;
+                        let company = '';
+                        
+                        if (occupation.includes(' at ')) {
+                          const parts = occupation.split(' at ');
+                          title = parts[0].trim();
+                          company = parts[1].trim();
+                        }
+                        
+                        // Only add if it matches filters
+                        const matchesTitle = !searchTitle || title.toLowerCase().includes(searchTitle.toLowerCase());
+                        const matchesCompany = !searchCompany || company.toLowerCase().includes(searchCompany.toLowerCase());
+                        
+                        if (matchesTitle && matchesCompany) {
+                          results.push({
+                            urn,
+                            name,
+                            title,
+                            company,
+                            location: '',
+                            imageUrl
+                          });
+                        }
+                      } catch (e) {
+                        console.error('Error parsing connection card:', e);
+                      }
+                    });
+                    
+                    return {
+                      results,
+                      debug: {
+                        cardsFound: cards.length
+                      }
+                    };
+                  }, title, company);
+                  
+                  logSteps.push(`Search results: ${JSON.stringify(searchResults.debug)}`);
+                  
+                  // Add search results to our results array
+                  results.results.push(...searchResults.results);
+                }
+              } catch (searchError) {
+                logSteps.push(`Error using search: ${searchError}`);
+              }
+            }
+          }
+          
+          // Return the results and log steps for debugging
+          console.log("Connection search steps:", logSteps);
+          return results.results;
+          
+                 } catch (error) {
+           console.error("LinkedIn connection search error:", error);
+           
+           // Take a final screenshot on error
+           try {
+             const errorScreenshot = await page.screenshot({ encoding: "base64" });
+             debugScreenshots.push({
+               stage: "error_state",
+               data: errorScreenshot
+             });
+           } catch (screenshotError) {
+             logSteps.push(`Error screenshot failed: ${screenshotError}`);
+           }
+           
+           throw new Error(`Connection search failed: ${error instanceof Error ? error.message : String(error)}. Steps: ${logSteps.join(' -> ')}`);
         }
-      }
-    });
-    
-    console.log(`Found ${results.length} matching connections`);
-    
-    // Generate HTML for results
-    const resultsHtml = generateSearchResultsHtml(results);
-    
-    return new Response(resultsHtml, {
-      headers: { 'Content-Type': 'text/html' },
-    });
+      });
+      
+      // Race the browser search against the timeout
+      profiles = await Promise.race<LinkedInProfile[]>([
+        searchPromise,
+        timeoutPromise
+      ]);
+      
+      // Clear the timeout since we successfully completed the operation
+      clearTimeout(timeoutId);
+      
+      console.log(`Found ${profiles.length} matching connections`);
+      
+      // Generate HTML for results
+      const resultsHtml = generateSearchResultsHtml(profiles);
+      
+      return new Response(resultsHtml, {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    } catch (error) {
+      console.error('Error searching connections:', error);
+      
+      // Clear timeout if it exists
+      if (timeoutId) clearTimeout(timeoutId);
+      
+      // Show debug info with screenshots for troubleshooting
+      const screenshotsHtml = debugScreenshots.map(screenshot => `
+        <div class="mb-6 border border-gray-200 rounded-lg overflow-hidden">
+          <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
+            <h3 class="font-medium text-gray-700">${screenshot.stage}</h3>
+          </div>
+          <div class="p-4">
+            <img src="data:image/png;base64,${screenshot.data}" alt="${screenshot.stage}" class="w-full border border-gray-300 rounded">
+          </div>
+        </div>
+      `).join('');
+      
+      return new Response(`
+        <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
+          <div class="flex">
+            <div class="flex-shrink-0">
+              <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <p class="text-sm leading-5 text-red-700">
+                Error searching connections: ${error instanceof Error ? error.message : String(error)}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        ${debugScreenshots.length > 0 ? `
+          <div class="bg-white rounded-xl shadow-md overflow-hidden p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Debug Screenshots</h2>
+            ${screenshotsHtml}
+          </div>
+        ` : ''}
+      `, {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
   } catch (error) {
     console.error('Error searching connections:', error);
     
@@ -730,7 +1222,7 @@ function generateSearchResultsHtml(profiles: LinkedInProfile[]): string {
           </div>`
         }
         <div>
-          <h3 class="text-lg leading-6 font-medium text-gray-900">${profile.name}</h3>
+          <h3 class="text-lg leading-6 font-medium text-gray-900 truncate">${profile.name}</h3>
           <p class="mt-1 max-w-2xl text-sm text-gray-500">${profile.title}${profile.company ? ` at ${profile.company}` : ''}</p>
           ${profile.location ? `<p class="mt-1 max-w-2xl text-sm text-gray-500">${profile.location}</p>` : ''}
         </div>
