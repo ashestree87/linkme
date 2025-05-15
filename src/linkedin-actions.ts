@@ -516,4 +516,272 @@ export async function sendMessageToConnection(profileUrl: string, message: strin
       };
     }
   });
+}
+
+/**
+ * Search for connections on LinkedIn with human-like behavior
+ * @param searchQuery The search query to find connections
+ * @param maxResults Maximum number of results to collect (default: 10)
+ * @returns Promise resolving to success status and found connections
+ */
+export async function searchConnections(searchQuery: string, maxResults: number = 10): Promise<ActionResult & { connections?: Array<{name: string, profileUrl: string, urn: string}> }> {
+  if (!searchQuery || searchQuery.trim() === '') {
+    return {
+      success: false,
+      message: "Search query cannot be empty"
+    };
+  }
+
+  return await withHumanBrowser(async (page) => {
+    try {
+      console.log("Starting connection search for:", searchQuery);
+      
+      // First go to the LinkedIn homepage to ensure we're properly logged in
+      await page.goto('https://www.linkedin.com/', { 
+        waitUntil: 'networkidle0',
+        timeout: 60000
+      });
+      
+      // Check for captcha before proceeding
+      const captchaDetected = await handleCaptcha(page);
+      if (captchaDetected) {
+        console.log("Captcha was detected and presumably solved. Continuing...");
+      }
+      
+      console.log("Trying modern LinkedIn UI connections page");
+      // Navigate to the connections page
+      await page.goto('https://www.linkedin.com/mynetwork/invite-connect/connections/', {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
+      });
+      
+      console.log("Waiting for page to load");
+      
+      // Wait for the connections list or search box to load
+      try {
+        await Promise.race([
+          page.waitForSelector('.mn-connections__search-input', { timeout: 10000 }),
+          page.waitForSelector('input[aria-label="Search connections"]', { timeout: 10000 }),
+          page.waitForSelector('.search-global-typeahead__input', { timeout: 10000 })
+        ]);
+      } catch (e) {
+        console.log("Timeout waiting for search input selector:", e);
+        // Take a screenshot to see what's on the page
+        await page.screenshot({ path: 'connections-page-debug.png' });
+        
+        // Log the current URL
+        const currentUrl = page.url();
+        console.log("Current URL:", currentUrl);
+        
+        // Check if we're on the right page
+        if (!currentUrl.includes('mynetwork') && !currentUrl.includes('connections')) {
+          return {
+            success: false,
+            message: "Failed to navigate to connections page. Current URL: " + currentUrl
+          };
+        }
+      }
+      
+      // Look for various search box selectors, as LinkedIn's UI changes frequently
+      const searchSelectors = [
+        '.mn-connections__search-input',
+        'input[aria-label="Search connections"]',
+        '.search-global-typeahead__input',
+        '.mn-community-summary__search-input',
+        'input.search-global-typeahead__input',
+        '#network-search-input'
+      ];
+      
+      let searchBoxFound = false;
+      let searchSelector = '';
+      
+      for (const selector of searchSelectors) {
+        try {
+          const exists = await page.$(selector);
+          if (exists) {
+            searchSelector = selector;
+            searchBoxFound = true;
+            console.log("Found search box with selector:", selector);
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!searchBoxFound) {
+        console.log("Search box not found. Trying global search instead.");
+        
+        // Try to use the global search if connections search isn't available
+        await page.goto('https://www.linkedin.com/search/results/people/?network=%5B%22F%22%5D', {
+          waitUntil: 'networkidle0',
+          timeout: 60000
+        });
+        
+        const globalSearchSelectors = [
+          'input.search-global-typeahead__input',
+          '.search-global-typeahead__input'
+        ];
+        
+        for (const selector of globalSearchSelectors) {
+          try {
+            const exists = await page.$(selector);
+            if (exists) {
+              searchSelector = selector;
+              searchBoxFound = true;
+              console.log("Found global search box with selector:", selector);
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+      }
+      
+      if (!searchBoxFound) {
+        // If still not found, take a screenshot for debugging
+        await page.screenshot({ path: 'search-failure-debug.png' });
+        
+        return {
+          success: false,
+          message: "Could not find search input on connections page."
+        };
+      }
+      
+      // Click on the search box and enter the search query
+      await humanClick(page, searchSelector);
+      await randomHumanDelay(500, 1000);
+      
+      // Clear the input field first
+      await page.keyboard.down('Control');
+      await page.keyboard.press('a');
+      await page.keyboard.up('Control');
+      await randomHumanDelay(200, 500);
+      await page.keyboard.press('Backspace');
+      await randomHumanDelay(300, 700);
+      
+      // Type the search query
+      await humanType(page, searchSelector, searchQuery);
+      
+      // Press Enter to submit the search
+      await randomHumanDelay(500, 1200);
+      await page.keyboard.press('Enter');
+      
+      console.log("Submitted search query. Waiting for results...");
+      
+      // Wait for search results to load
+      await randomHumanDelay(3000, 5000);
+      
+      // Check for various result selectors
+      const resultSelectors = [
+        '.mn-connections__card', // Modern connections list
+        '.mn-connection-card', // Alternate connections card
+        '.search-result__wrapper', // Search results
+        '.search-result', // General search results
+        '.reusable-search__result-container', // Newer search results
+        '.entity-result', // Even newer search results
+        'li.reusable-search__result-container' // Most specific
+      ];
+      
+      let resultsFound = false;
+      let resultSelector = '';
+      
+      for (const selector of resultSelectors) {
+        try {
+          const results = await page.$$(selector);
+          if (results.length > 0) {
+            resultsFound = true;
+            resultSelector = selector;
+            console.log(`Found ${results.length} results with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!resultsFound) {
+        // Take a screenshot of the page for debugging
+        await page.screenshot({ path: 'no-results-debug.png' });
+        
+        return {
+          success: false,
+          message: "No search results found. Either no connections match the query or the UI has changed."
+        };
+      }
+      
+      // Extract connection data from the results
+      const connections = await page.evaluate((selector, maxResults) => {
+        const results = Array.from(document.querySelectorAll(selector)).slice(0, maxResults);
+        
+        return results.map(result => {
+          // Try different attribute locations based on LinkedIn's varying HTML structure
+          const profileElement = 
+            result.querySelector('a[href*="/in/"]') || 
+            result.querySelector('.mn-connection-card__link') ||
+            result.querySelector('.app-aware-link');
+          
+          const nameElement = 
+            result.querySelector('.mn-connection-card__name') || 
+            result.querySelector('.actor-name') || 
+            result.querySelector('.entity-result__title-text') ||
+            result.querySelector('.org-people-profile-card__profile-title');
+          
+          // Get profile URL
+          const profileUrl = profileElement ? (profileElement as HTMLAnchorElement).href : '';
+          
+          // Get name
+          const name = nameElement && nameElement.textContent ? nameElement.textContent.trim() : 'Unknown';
+          
+          // Extract URN (LinkedIn's internal ID) from various possible locations
+          let urn = '';
+          if (profileUrl) {
+            // Try to extract from URL
+            const match = profileUrl.match(/\/in\/([^\/]+)/);
+            if (match && match[1]) {
+              urn = match[1];
+            }
+          }
+          
+          // Try data attributes if URN not found in URL
+          if (!urn) {
+            const dataUrn = 
+              result.getAttribute('data-urn') || 
+              result.getAttribute('data-entity-urn') ||
+              profileElement?.getAttribute('data-entity-urn') || '';
+            
+            if (dataUrn) {
+              const urnMatch = dataUrn.match(/urn:li:fs_miniProfile:(\w+)/);
+              urn = urnMatch ? urnMatch[1] : dataUrn;
+            }
+          }
+          
+          return { name, profileUrl, urn };
+        }).filter(conn => conn.profileUrl); // Only return connections with valid URLs
+      }, resultSelector, maxResults);
+      
+      // Log the number of connections found
+      console.log(`Found ${connections.length} connections matching "${searchQuery}"`);
+      
+      if (connections.length === 0) {
+        return {
+          success: false,
+          message: `No connections found matching "${searchQuery}"`
+        };
+      }
+      
+      return {
+        success: true,
+        message: `Found ${connections.length} connections matching "${searchQuery}"`,
+        connections: connections
+      };
+      
+    } catch (error) {
+      console.error("Error searching connections:", error);
+      return {
+        success: false,
+        message: `Error searching connections: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  });
 } 

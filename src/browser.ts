@@ -28,7 +28,7 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
     await page.setUserAgent(env.USERAGENT);
     
     // Set default navigation timeout to be longer
-    page.setDefaultNavigationTimeout(30000);
+    page.setDefaultNavigationTimeout(60000);
     
     // Disable cache for fresh results
     await page.setCacheEnabled(false);
@@ -79,7 +79,7 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
     try {
       await page.goto('https://www.linkedin.com/', { 
         waitUntil: 'domcontentloaded',
-        timeout: 30000
+        timeout: 60000
       });
       
       // Wait a moment for cookies and session to establish
@@ -196,7 +196,7 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
     
     // Set default navigation timeout to be variable (like humans have different patience levels)
     const timeoutVariation = Math.floor(Math.random() * 10000);
-    page.setDefaultNavigationTimeout(30000 + timeoutVariation);
+    page.setDefaultNavigationTimeout(60000 + timeoutVariation);
     
     // Add randomized headers
     const languages = ['en-US,en;q=0.9', 'en-US,en;q=0.8,es;q=0.3', 'en-GB,en;q=0.9,en-US;q=0.8'];
@@ -265,7 +265,7 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
       
       await page.goto('https://www.linkedin.com/', { 
         waitUntil: randomWaitOption as any,
-        timeout: 30000 + timeoutVariation
+        timeout: 60000 + timeoutVariation
       });
       
       // We'll do basic simple reading simulation here to avoid circular dependency
@@ -380,16 +380,5 @@ export async function handleCaptcha(page: any, timeoutMs: number = 120000): Prom
   return false;
 }
 
-// Forward declaration to avoid circular dependencies
-// These will be defined when we import the module
-let randomViewportAdjustment: any;
-let simulateReading: any;  
-let randomSiteInteraction: any;
-
-// Import the functions after declaration to avoid circular dependencies
-import * as humanBehavior from './human-behavior';
-
-// Assign the imported functions
-randomViewportAdjustment = humanBehavior.randomViewportAdjustment;
-simulateReading = humanBehavior.simulateReading;
-randomSiteInteraction = humanBehavior.randomSiteInteraction; 
+// Note: To avoid circular dependencies, we don't directly import from human-behavior.
+// Instead, we implement simplified versions of the needed functions directly in withHumanBrowser. 

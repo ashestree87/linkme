@@ -15,7 +15,8 @@
 	"dependencies": {
 		"@cloudflare/puppeteer": "^1.0.2",
 		"htmx.org": "latest",
-		"itty-router": "latest"
+		"itty-router": "latest",
+		"reflect-metadata": "^0.2.2"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20230904.0",
