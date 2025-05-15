@@ -15,9 +15,9 @@ export function generateConnectionsView(): string {
       <script src="https://cdn.tailwindcss.com"></script>
       <script src="https://unpkg.com/htmx.org@1.9.2"></script>
       <script>
-        // Set htmx to use relative URLs
+        // Configure htmx
         document.addEventListener('DOMContentLoaded', function() {
-          htmx.config.baseURL = '';
+          htmx.config.defaultSwapStyle = 'innerHTML';
         });
       </script>
     </head>
@@ -37,7 +37,7 @@ export function generateConnectionsView(): string {
           <!-- LinkedIn Search -->
           <div class="bg-white shadow-md rounded-lg p-6 border border-gray-200">
             <h2 class="text-xl font-semibold mb-4">LinkedIn Search</h2>
-            <form hx-post="./search-linkedin" hx-target="#search-results" class="space-y-4">
+            <form hx-post="search-linkedin" hx-target="#search-results" class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Keywords</label>
                 <input type="text" name="keywords" placeholder="Job title, skills, etc." class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
@@ -62,7 +62,7 @@ export function generateConnectionsView(): string {
           <!-- Existing Connections -->
           <div class="bg-white shadow-md rounded-lg p-6 border border-gray-200">
             <h2 class="text-xl font-semibold mb-4">Find Existing Connections</h2>
-            <form hx-post="./search-connections" hx-target="#search-results" class="space-y-4">
+            <form hx-post="search-connections" hx-target="#search-results" class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
                 <input type="text" name="title" placeholder="CEO, Developer, etc." class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
@@ -338,7 +338,7 @@ export async function handleLinkedInSearch(request: Request, env: AdminEnv): Pro
                   </div>
                 </div>
                 <div class="mt-3 flex justify-end">
-                  <form hx-post="/import-connection" hx-swap="outerHTML">
+                  <form hx-post="import-connection" hx-swap="outerHTML">
                     <input type="hidden" name="urn" value="${profile.urn}">
                     <input type="hidden" name="name" value="${profile.name}">
                     <button type="submit" class="px-3 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 flex items-center gap-1 text-xs font-medium">
@@ -617,7 +617,7 @@ function generateSearchResultsHtml(profiles: LinkedInProfile[]): string {
           ${profile.location ? `<p class="mt-1 max-w-2xl text-sm text-gray-500">${profile.location}</p>` : ''}
         </div>
         <div class="ml-auto">
-          <form hx-post="./import-connection" hx-swap="outerHTML" class="flex justify-end">
+          <form hx-post="import-connection" hx-swap="outerHTML" class="flex justify-end">
             <input type="hidden" name="urn" value="${profile.urn}">
             <input type="hidden" name="name" value="${profile.name}">
             <input type="hidden" name="title" value="${profile.title}">
