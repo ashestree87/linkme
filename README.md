@@ -40,10 +40,18 @@ npm install
 
 ### Development
 
-Run the development server:
+Run the development server in remote mode (required for browser-based LinkedIn features):
 
 ```bash
 npm run dev
+```
+
+This uses the `--remote` flag with Wrangler to enable browser bindings, which are necessary for the LinkedIn integration to work. The local code runs on your machine, but browser operations are executed on Cloudflare's infrastructure.
+
+If you only need to work on the UI components and don't need LinkedIn functionality, you can use local-only mode:
+
+```bash
+npm run dev:local
 ```
 
 ### Testing Locally

@@ -48,10 +48,22 @@ Now edit the `.dev.vars` file to add your LinkedIn credentials:
 ## Step 3: Start the Development Server
 
 ```bash
+# Start the development server in remote mode (required for browser bindings)
 npm run dev
 ```
 
-This will start the Cloudflare Workers development server. You should see output indicating the server is running, typically at http://localhost:8787.
+This will start the Cloudflare Workers development server in remote mode, which is required for the browser bindings (Puppeteer) to work properly. The local code will still run on your machine, but browser rendering will happen on Cloudflare's infrastructure.
+
+When you run this command:
+1. You'll be prompted to log in to your Cloudflare account (if not already logged in)
+2. The server typically runs at http://localhost:8787
+3. You may see logs indicating that browser rendering is happening remotely
+
+> **Note**: If you want to run without browser features for UI development only, you can use:
+> ```bash
+> npm run dev:local
+> ```
+> But LinkedIn search functionality won't work in this mode.
 
 ## Step 4: Testing the Application
 

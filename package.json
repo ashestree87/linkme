@@ -4,7 +4,8 @@
 	"description": "LinkedIn automation and lead management tool",
 	"main": "dist/index.js",
 	"scripts": {
-		"dev": "wrangler dev src/index.ts",
+		"dev": "wrangler dev src/index.ts --remote",
+		"dev:local": "wrangler dev src/index.ts",
 		"build": "tsc",
 		"deploy": "wrangler publish",
 		"format": "prettier --write '**/*.{js,ts,css,json,md}'"
@@ -12,7 +13,7 @@
 	"author": "",
 	"license": "MIT",
 	"dependencies": {
-		"@cloudflare/puppeteer": "^1.4.0",
+		"@cloudflare/puppeteer": "^1.0.2",
 		"htmx.org": "latest",
 		"itty-router": "latest"
 	},
