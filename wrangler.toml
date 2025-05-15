@@ -4,6 +4,9 @@ compatibility_date = "2025-05-14"
 compatibility_flags = ["nodejs_compat"]
 node_compat = true
 
+# CPU and memory limits for browser usage
+limits = { cpu_ms = 800 }
+
 [build]
 command = "npm run build"
 minify = true
@@ -11,6 +14,7 @@ minify = true
 # Browser binding for Puppeteer
 [browser]
 binding = "CRAWLER_BROWSER"
+type = "default"
 
 # KV Namespace binding
 [[kv_namespaces]]

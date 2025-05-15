@@ -1037,12 +1037,6 @@ async function searchConnectionsBackground(
     addDebugLog(debugSessionId, "Testing screenshot functionality");
     addTestScreenshot(debugSessionId);
     
-    // Check if session is recording screenshots properly
-    const diagnostics = getDebugSessionWithDiagnostics(debugSessionId);
-    if (diagnostics && diagnostics._diagnostics) {
-      addDebugLog(debugSessionId, `Debug session diagnostics: ${JSON.stringify(diagnostics._diagnostics)}`);
-    }
-    
     // Create search query from criteria
     let searchQuery = '';
     if (title) searchQuery += title + ' ';
@@ -1056,126 +1050,99 @@ async function searchConnectionsBackground(
     
     addDebugLog(debugSessionId, `Will search for connections with query: "${searchQuery}"`);
     
+    // Setup timed fallback for browser operations
+    const timeoutPromise = new Promise<void>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("Browser operation timed out after 15 seconds"));
+      }, 15000);
+    });
+    
     try {
-      // Import puppeteer directly
-      const { launch } = await import('@cloudflare/puppeteer');
-      addDebugLog(debugSessionId, "Successfully imported @cloudflare/puppeteer module");
+      // Import Puppeteer with minimal dependencies
+      addDebugLog(debugSessionId, "Importing puppeteer module");
+      const puppeteer = await import('@cloudflare/puppeteer');
+      addDebugLog(debugSessionId, "Successfully imported puppeteer module");
       
-      // Try launching browser with a timeout
-      addDebugLog(debugSessionId, "Attempting to launch browser");
-      const browser = await Promise.race([
-        launch(env.CRAWLER_BROWSER),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Browser launch timed out after 20 seconds")), 20000))
-      ]) as import('@cloudflare/puppeteer').Browser;
-      
-      addDebugLog(debugSessionId, "Browser launched successfully");
+      // Minimal browser launch with very short timeout
+      addDebugLog(debugSessionId, "Attempting minimal browser launch");
+      let browser;
       
       try {
-        // Create a page
-        addDebugLog(debugSessionId, "Creating browser page");
+        // Race between browser launch and a short timeout
+        browser = await Promise.race([
+          puppeteer.launch(env.CRAWLER_BROWSER),
+          timeoutPromise
+        ]) as import('@cloudflare/puppeteer').Browser;
+        
+        addDebugLog(debugSessionId, "Browser launched successfully");
+        
+        // Just create a page as minimal test
         const page = await browser.newPage();
         addDebugLog(debugSessionId, "Browser page created successfully");
         
-        // Set viewport and user agent
-        await page.setViewport({ width: 1280, height: 800 });
-        await page.setUserAgent(env.USERAGENT);
-        
-        // Set cookies
-        await page.setCookie({
-          name: 'li_at',
-          value: env.LI_AT,
-          domain: '.linkedin.com',
-          path: '/',
-          httpOnly: true,
-          secure: true
-        });
-        
-        // Navigate to LinkedIn
-        addDebugLog(debugSessionId, "Navigating to LinkedIn");
-        await page.goto('https://www.linkedin.com/', { 
+        // Navigate to a simple page (not LinkedIn yet)
+        await page.goto('https://example.com', { 
           waitUntil: 'domcontentloaded',
-          timeout: 20000
+          timeout: 5000 
         });
+        addDebugLog(debugSessionId, "Successfully navigated to example.com");
         
-        // Take screenshot
-        try {
-          const screenshot = await page.screenshot({ type: 'jpeg', quality: 70 });
-          const base64Image = screenshot.toString('base64');
-          addDebugLog(debugSessionId, "Captured LinkedIn screenshot");
-          addDebugScreenshot(debugSessionId, "LinkedIn Homepage", base64Image);
-        } catch (screenshotError: unknown) {
-          const errorMessage = screenshotError instanceof Error ? screenshotError.message : String(screenshotError);
-          addDebugLog(debugSessionId, `Screenshot error: ${errorMessage}`);
-        }
+        // Take a simple screenshot
+        const screenshot = await page.screenshot({ type: 'jpeg', quality: 40 });
+        addDebugLog(debugSessionId, "Successfully captured screenshot");
         
-        // Extract connections
-        addDebugLog(debugSessionId, "Extracting visible connections");
-        const connections = await page.evaluate(() => {
-          // Extract whatever user information we can find on the page
-          const links = Array.from(document.querySelectorAll('a[href*="/in/"]'));
-          
-          return links.map(link => {
-            const nameEl = link.querySelector('span') || link;
-            const href = link.getAttribute('href') || '';
-            const urn = href.match(/\/in\/([^\/\?]+)/)?.[1] || '';
-            
-            return {
-              name: nameEl.textContent?.trim() || 'Unknown',
-              profileUrl: href.startsWith('http') ? href : `https://www.linkedin.com${href}`,
-              urn: urn
-            };
-          }).filter(c => c.urn); // Only return those with a URN
+        // Extract the page title
+        const title = await page.title();
+        addDebugLog(debugSessionId, `Page title: ${title}`);
+        
+        // Return mock connections as this is just a test
+        const mockResults = [
+          { name: "John Smith (browser worked!)", profileUrl: "https://linkedin.com/in/johnsmith", urn: "johnsmith" },
+          { name: "Jane Doe (browser worked!)", profileUrl: "https://linkedin.com/in/janedoe", urn: "janedoe" }
+        ];
+        
+        mockResults.forEach((conn: any, index: number) => {
+          addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
         });
-        
-        // Log the connections
-        if (connections.length > 0) {
-          addDebugLog(debugSessionId, `Found ${connections.length} LinkedIn profiles`);
-          connections.forEach((conn: any, index: number) => {
-            addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
-          });
-        } else {
-          addDebugLog(debugSessionId, "No LinkedIn profiles found on the page");
-        }
         
       } finally {
-        // Always close the browser
-        addDebugLog(debugSessionId, "Closing browser");
-        await browser.close();
-        addDebugLog(debugSessionId, "Browser closed successfully");
+        // Close browser if it was created
+        if (browser) {
+          addDebugLog(debugSessionId, "Closing browser");
+          await browser.close();
+          addDebugLog(debugSessionId, "Browser closed successfully");
+        }
       }
       
-      addDebugLog(debugSessionId, "Search completed successfully");
-      completeDebugSession(debugSessionId, "Search completed successfully");
+      // Success
+      addDebugLog(debugSessionId, "Test completed successfully");
+      completeDebugSession(debugSessionId, "Minimal browser test successful");
       
-    } catch (browserError: unknown) {
-      // Handle browser errors
-      const errorMessage = browserError instanceof Error ? browserError.message : String(browserError);
-      addDebugLog(debugSessionId, `Browser error: ${errorMessage}`);
+    } catch (error: unknown) {
+      // Handle errors from browser operations
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      addDebugLog(debugSessionId, `Browser test failed: ${errorMessage}`);
       
-      if (browserError instanceof Error && browserError.stack) {
-        addDebugLog(debugSessionId, `Error stack: ${browserError.stack.split('\n')[0]}`);
+      if (error instanceof Error && error.stack) {
+        addDebugLog(debugSessionId, `Error stack: ${error.stack.split('\n')[0]}`);
       }
       
-      // Fallback to mock data
-      addDebugLog(debugSessionId, "Falling back to mock data due to browser error");
-      
+      // Return mock data as fallback
       const mockResults = [
-        { name: "John Smith (mock)", profileUrl: "https://linkedin.com/in/johnsmith", urn: "johnsmith" },
-        { name: "Jane Doe (mock)", profileUrl: "https://linkedin.com/in/janedoe", urn: "janedoe" },
-        { name: "Bob Johnson (mock)", profileUrl: "https://linkedin.com/in/bobjohnson", urn: "bobjohnson" }
+        { name: "Mock Result 1 (fallback)", profileUrl: "https://linkedin.com/in/mock1", urn: "mock1" },
+        { name: "Mock Result 2 (fallback)", profileUrl: "https://linkedin.com/in/mock2", urn: "mock2" }
       ];
       
-      // Log the mock results
-      addDebugLog(debugSessionId, `Returning ${mockResults.length} mock connections`);
-      mockResults.forEach((conn, index) => {
+      addDebugLog(debugSessionId, `Returning ${mockResults.length} mock connections as fallback`);
+      mockResults.forEach((conn: any, index: number) => {
         addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
       });
       
-      completeDebugSession(debugSessionId, "Search completed with mock data due to error");
+      completeDebugSession(debugSessionId, "Completed with mock data (browser failed)");
     }
     
   } catch (error) {
-    // Import debug functions if not already imported
+    // Global error handler
     const { addDebugLog, completeDebugSession } = await import('../debug');
     
     const typedError = error as Error;
