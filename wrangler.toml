@@ -48,7 +48,7 @@ crons = ["0 * * * *"]
 [vars]
 LI_AT = "placeholder_li_at_cookie_value"
 CSRF = "placeholder_csrf_token_value"
-USERAGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+USERAGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.7103.114 Safari/537.36"
 
 # Environment-specific configurations
 [env.production]

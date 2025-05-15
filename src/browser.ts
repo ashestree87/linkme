@@ -206,10 +206,13 @@ export async function withHumanBrowser<T>(fn: (page: Page) => Promise<T>): Promi
     // Set random user agent from a pool of real browser user agents
     console.log("Setting user agent...");
     const userAgents = [
-      env.USERAGENT, // Use the provided one most of the time
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59'
+      env.USERAGENT, // keep whatever the environment is supplying most of the time
+      // Chrome 136 on Windows 10
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',  
+      // Safari 18.4 on macOS Sonoma (14.7.5)
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15',  
+      // Edge 136 on Windows 10
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0'
     ];
     
     // 80% chance to use the provided user agent, 20% chance to use another one

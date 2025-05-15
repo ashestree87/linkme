@@ -41,7 +41,7 @@ Now edit the `.dev.vars` file to add your LinkedIn credentials:
    ```
    LI_AT=your_li_at_cookie_value_here
    CSRF=your_jsessionid_cookie_value_here
-   USERAGENT=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36
+   USERAGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.7103.114 Safari/537.36
    WEBHOOK_SECRET=any_random_string_for_development
    ```
 
