@@ -482,235 +482,65 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
       });
     }
     
-    // Create a timeout for the operation
-    const TIMEOUT_DURATION = 30000; // 30 seconds
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let isTimedOut = false;
+    // Import debug functionality
+    const { createDebugSession, addDebugLog, captureDebugScreenshot, createDebugEnabledPage, completeDebugSession, getDebugSession } = await import('../debug');
     
-    // Diagnostic information
-    let debugScreenshots: Array<{stage: string, data: string}> = [];
-    let logSteps: string[] = [];
-    let pageHtmlSample = '';
+    // Create a debug session for this search operation
+    const debugSessionId = createDebugSession();
+    addDebugLog(debugSessionId, `Starting connection search with criteria: ${JSON.stringify({ title, company, industry })}`);
+
+    // Create a viewer pane for real-time feedback
+    const viewerUrl = `/debug/viewer/${debugSessionId}`;
     
-    // Create a promise that resolves with the timeout error
-    const timeoutPromise = new Promise<LinkedInProfile[]>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        isTimedOut = true;
-        reject(new Error("Search operation timed out after 30 seconds"));
-      }, TIMEOUT_DURATION);
+    // First immediately return a response with loading indicator and embedded debug viewer
+    const response = new Response(`
+      <div id="search-results-container">
+        <div class="bg-white rounded-xl shadow-md overflow-hidden p-6 mb-6">
+          <h2 class="text-xl font-semibold mb-4">
+            Searching Connections
+            <span class="inline-block ml-3">
+              <span class="animate-pulse inline-flex h-2 w-2 rounded-full bg-blue-500 opacity-75"></span>
+              <span class="animate-pulse inline-flex h-2 w-2 rounded-full bg-blue-500 opacity-75 ml-1" style="animation-delay: 0.2s"></span>
+              <span class="animate-pulse inline-flex h-2 w-2 rounded-full bg-blue-500 opacity-75 ml-1" style="animation-delay: 0.4s"></span>
+            </span>
+          </h2>
+          
+          <div class="mb-6">
+            <p class="text-gray-700">Please wait while we search for connections that match your criteria...</p>
+            <div class="mt-4 flex">
+              <a href="${viewerUrl}" target="_blank" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 inline-flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                View Real-Time Progress
+              </a>
+            </div>
+          </div>
+          
+          <div class="bg-gray-50 rounded-md overflow-hidden border border-gray-200">
+            <iframe src="${viewerUrl}" class="w-full h-96 border-0"></iframe>
+          </div>
+        </div>
+      </div>
+    `, {
+      headers: { 'Content-Type': 'text/html' },
     });
     
-    try {
-      // Try to get connections with the browser
-      const profiles = await Promise.race<LinkedInProfile[]>([
-        withBrowser<LinkedInProfile[]>(async (page) => {
-          try {
-            logSteps.push("Starting connection search");
-            
-            // Take a screenshot before navigation
-            try {
-              const beforeScreenshot = await page.screenshot({ encoding: "base64" });
-              debugScreenshots.push({
-                stage: "before_navigation",
-                data: beforeScreenshot
-              });
-              
-              // Capture initial page HTML
-              pageHtmlSample = await page.evaluate(() => {
-                return document.body.innerHTML.substring(0, 2000); // First 2000 chars of body
-              });
-            } catch (screenshotError) {
-              logSteps.push(`Screenshot error: ${screenshotError}`);
-            }
-            
-            // First try - new LinkedIn UI approach
-            logSteps.push("Trying modern LinkedIn UI connections page");
-            
-            // Slower navigation to avoid detection
-            await page.goto('https://www.linkedin.com/mynetwork/', { 
-              waitUntil: 'domcontentloaded', // Change to domcontentloaded first
-              timeout: 90000 
-            });
-            
-            // Take immediate screenshot after DOM loads
-            try {
-              const immediateScreenshot = await page.screenshot({ encoding: "base64" });
-              debugScreenshots.push({
-                stage: "immediate_after_navigation",
-                data: immediateScreenshot
-              });
-            } catch (screenshotError) {
-              logSteps.push(`Immediate screenshot error: ${screenshotError}`);
-            }
-            
-            // Wait for connections section to load
-            logSteps.push("Waiting for page to load");
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Increase wait time
-            
-            // Take a screenshot after navigation
-            try {
-              const afterNavScreenshot = await page.screenshot({ encoding: "base64" });
-              debugScreenshots.push({
-                stage: "after_mynetwork_navigation",
-                data: afterNavScreenshot
-              });
-              
-              // Capture page HTML for analysis
-              pageHtmlSample = await page.evaluate(() => {
-                return document.body.innerHTML.substring(0, 5000); // Get more HTML for context
-              });
-              logSteps.push(`Captured HTML sample (${pageHtmlSample.length} chars)`);
-            } catch (screenshotError) {
-              logSteps.push(`Screenshot error: ${screenshotError}`);
-            }
-            
-            // Try to detect if page is stuck loading or LinkedIn is showing a different UI
-            const loadingState = await page.evaluate(() => {
-              const isLoading = !!document.querySelector('.artdeco-loader') || 
-                              !!document.querySelector('.loading-icon') ||
-                              !!document.querySelector('[role="progressbar"]');
-              
-              const possibleIssues = [];
-              
-              // Check for known issue indicators
-              if (document.body.textContent?.includes('unusual activity')) {
-                possibleIssues.push('unusual_activity_detected');
-              }
-              if (document.body.textContent?.includes('verify')) {
-                possibleIssues.push('verification_needed');
-              }
-              if (document.body.textContent?.includes('sign in')) {
-                possibleIssues.push('signed_out');
-              }
-              
-              return {
-                isLoading,
-                possibleIssues,
-                title: document.title,
-                url: window.location.href
-              };
-            });
-            
-            logSteps.push(`Page state: ${JSON.stringify(loadingState)}`);
-            
-            // Rest of your existing extraction code
-            // ...  
-            
-            // For now, let's just use a simple test result
-            return [];
-            
-          } catch (error) {
-            logSteps.push(`Browser error: ${error instanceof Error ? error.message : String(error)}`);
-            
-            // Take final error screenshot
-            try {
-              const errorScreenshot = await page.screenshot({ encoding: "base64" });
-              debugScreenshots.push({
-                stage: "error_state",
-                data: errorScreenshot
-              });
-            } catch (screenshotError) {
-              logSteps.push(`Error screenshot failed: ${screenshotError}`);
-            }
-            
-            throw new Error(`Connection search failed: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }),
-        timeoutPromise
-      ]);
-      
-      // Clear the timeout since we successfully completed the operation
-      if (timeoutId) clearTimeout(timeoutId);
-      
-      // Generate HTML for results
-      const resultsHtml = generateSearchResultsHtml(profiles);
-      
-      return new Response(resultsHtml, {
-        headers: { 'Content-Type': 'text/html' },
+    // Start the search operation in the background
+    // We don't await this since we already returned the response
+    searchConnectionsBackground(env, debugSessionId, { title, company, industry })
+      .catch(error => {
+        console.error('Background search error:', error);
+        completeDebugSession(debugSessionId, `Search failed: ${error.message}`);
       });
-      
-    } catch (error) {
-      console.error('Error searching connections:', error);
-      
-      // Clear timeout if it exists
-      if (timeoutId) clearTimeout(timeoutId);
-      
-      // Show debug info with screenshots for troubleshooting
-      const screenshotsHtml = debugScreenshots.map(screenshot => `
-        <div class="mb-6 border border-gray-200 rounded-lg overflow-hidden">
-          <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
-            <h3 class="font-medium text-gray-700">${screenshot.stage}</h3>
-          </div>
-          <div class="p-4">
-            <img src="data:image/jpeg;base64,${screenshot.data}" alt="${screenshot.stage}" class="w-full border border-gray-300 rounded">
-          </div>
-        </div>
-      `).join('');
-      
-      return new Response(`
-        <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
-          <div class="flex">
-            <div class="flex-shrink-0">
-              <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-              </svg>
-            </div>
-            <div class="ml-3">
-              <p class="text-sm leading-5 text-red-700">
-                Error searching connections: ${error instanceof Error ? error.message : String(error)}
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        ${debugScreenshots.length > 0 ? `
-          <div class="bg-white rounded-xl shadow-md overflow-hidden p-6 mb-6">
-            <h2 class="text-xl font-semibold mb-4">Debug Screenshots (${debugScreenshots.length})</h2>
-            ${screenshotsHtml}
-          </div>
-        ` : '<p>No screenshots captured</p>'}
-
-        <div class="bg-white rounded-xl shadow-md overflow-hidden p-6 mb-6">
-          <h2 class="text-xl font-semibold mb-4">Diagnostic Information</h2>
-          <div class="space-y-4">
-            <div>
-              <h3 class="text-md font-semibold text-gray-700">Page HTML Sample</h3>
-              <div class="mt-2 p-4 bg-gray-50 rounded overflow-auto max-h-60">
-                <pre class="text-xs text-gray-600 whitespace-pre-wrap">${pageHtmlSample || 'No HTML sample captured'}</pre>
-              </div>
-            </div>
-            <div>
-              <h3 class="text-md font-semibold text-gray-700">Steps Attempted</h3>
-              <div class="mt-2">
-                <ul class="list-disc pl-5 space-y-1 text-sm text-gray-600">
-                  ${logSteps?.map(step => `<li>${step}</li>`).join('') || '<li>No steps recorded</li>'}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-white rounded-xl shadow-md overflow-hidden p-6 mb-6">
-          <h2 class="text-xl font-semibold mb-4">Troubleshooting Recommendations</h2>
-          <div class="space-y-4">
-            <p class="text-gray-700">Based on the error information, here are some suggestions:</p>
-            <ol class="list-decimal pl-5 space-y-2 text-gray-700">
-              <li>Try updating your LinkedIn cookies (li_at and JSESSIONID) - they may have expired or been detected as automation</li>
-              <li>Check that your User-Agent is set to a modern browser version</li>
-              <li>LinkedIn may be implementing stricter anti-automation measures - try with less frequent searches</li>
-              <li>Verify you can manually search for connections by logging into LinkedIn directly</li>
-            </ol>
-          </div>
-        </div>
-      `, {
-        headers: { 'Content-Type': 'text/html' },
-      });
-    }
+    
+    return response;
+    
   } catch (error) {
     console.error('Error searching connections:', error);
     
     return new Response(`
-      <div class="bg-red-50 border-l-4 border-red-400 p-4">
+      <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
         <div class="flex">
           <div class="flex-shrink-0">
             <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
@@ -727,6 +557,230 @@ export async function handleSearchConnections(request: Request, env: AdminEnv): 
     `, {
       headers: { 'Content-Type': 'text/html' },
     });
+  }
+}
+
+/**
+ * Background process for searching connections
+ * This runs after we've already returned a response to the user
+ */
+async function searchConnectionsBackground(
+  env: AdminEnv, 
+  debugSessionId: string, 
+  criteria: { title: string, company: string, industry: string }
+): Promise<void> {
+  const { title, company, industry } = criteria;
+  
+  try {
+    const { withBrowser } = await import('../common');
+    const { addDebugLog, captureDebugScreenshot, createDebugEnabledPage, completeDebugSession } = await import('../debug');
+    
+    await withBrowser<void>(async (page) => {
+      try {
+        // Configure screenshot settings
+        const config = {
+          enabled: true,
+          frequency: 'high',
+          saveLocally: false,
+          maxScreenshots: 30
+        };
+        
+        // Wrap page with debug capabilities
+        const debugPage = createDebugEnabledPage(page, debugSessionId, config);
+        
+        // Log the start of the process
+        addDebugLog(debugSessionId, "Starting LinkedIn connections search");
+        
+        // Navigate to LinkedIn connections page with appropriate error handling
+        addDebugLog(debugSessionId, "Navigating to LinkedIn My Network page");
+        
+        // Use a try/catch for each navigation to handle context destroyed errors
+        try {
+          // Navigate with more generous timeout and more resilient settings
+          await debugPage.goto('https://www.linkedin.com/mynetwork/', { 
+            waitUntil: 'domcontentloaded', 
+            timeout: 60000 
+          });
+          
+          // Capture screenshot with proper error handling
+          await captureDebugScreenshot(debugPage, debugSessionId, "LinkedIn Network Page");
+          addDebugLog(debugSessionId, "Successfully loaded My Network page");
+        } catch (error) {
+          const navError = error as Error;
+          addDebugLog(debugSessionId, `Navigation error: ${navError.message}`);
+          // Don't rethrow, try to continue if possible
+        }
+        
+        // Small delay to ensure the page loads properly
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Try to capture screenshot after navigation completed
+        try {
+          await captureDebugScreenshot(debugPage, debugSessionId, "After Navigation Completed");
+        } catch (error) {
+          const screenshotError = error as Error;
+          addDebugLog(debugSessionId, `Screenshot error after navigation: ${screenshotError.message}`);
+        }
+        
+        // Check for connection tab/section and click it if needed
+        addDebugLog(debugSessionId, "Looking for connections section");
+        
+        try {
+          // Wait for connections elements to be visible
+          await debugPage.waitForSelector('.mn-connections', { timeout: 10000 })
+            .catch(() => addDebugLog(debugSessionId, "Could not find .mn-connections element"));
+          
+          // Take a screenshot of connections section
+          await captureDebugScreenshot(debugPage, debugSessionId, "Connections Section");
+          
+          // Click on connections tab if it exists
+          const hasConnectionsTab = await debugPage.evaluate(() => {
+            const connectionsTab = document.querySelector('a[href="/mynetwork/connections/"]');
+            if (connectionsTab) {
+              (connectionsTab as HTMLElement).click();
+              return true;
+            }
+            return false;
+          });
+          
+          if (hasConnectionsTab) {
+            addDebugLog(debugSessionId, "Clicked on connections tab");
+            // Wait for the page to load after click
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Take another screenshot
+            await captureDebugScreenshot(debugPage, debugSessionId, "After Clicking Connections Tab");
+          } else {
+            addDebugLog(debugSessionId, "No connections tab found, continuing with current page");
+          }
+        } catch (error) {
+          const selectorError = error as Error;
+          addDebugLog(debugSessionId, `Error finding connections section: ${selectorError.message}`);
+        }
+        
+        // Apply search filters if any were provided
+        if (title || company || industry) {
+          addDebugLog(debugSessionId, "Applying search filters");
+          
+          try {
+            // Look for search box and enter criteria
+            const searchBox = await debugPage.$('input[placeholder*="Search"], input[placeholder*="search"]');
+            if (searchBox) {
+              addDebugLog(debugSessionId, "Found search input field");
+              await captureDebugScreenshot(debugPage, debugSessionId, "Before Entering Search");
+              
+              // Combine search criteria
+              const searchQuery = [
+                title ? `title:"${title}"` : '',
+                company ? `company:"${company}"` : '',
+                industry ? `industry:"${industry}"` : ''
+              ].filter(Boolean).join(' ');
+              
+              // Type search query
+              await searchBox.type(searchQuery);
+              addDebugLog(debugSessionId, `Entered search query: ${searchQuery}`);
+              
+              // Take screenshot after typing
+              await captureDebugScreenshot(debugPage, debugSessionId, "After Entering Search");
+              
+              // Press Enter to search
+              await searchBox.press('Enter');
+              addDebugLog(debugSessionId, "Pressed Enter to search");
+              
+              // Wait for results to load
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              await captureDebugScreenshot(debugPage, debugSessionId, "Search Results");
+            } else {
+              addDebugLog(debugSessionId, "Could not find search input field");
+            }
+          } catch (error) {
+            const searchError = error as Error;
+            addDebugLog(debugSessionId, `Error applying search filters: ${searchError.message}`);
+          }
+        }
+        
+        // Extract connection results
+        addDebugLog(debugSessionId, "Extracting connection results");
+        
+        try {
+          // Take final screenshot of results
+          await captureDebugScreenshot(debugPage, debugSessionId, "Final Results");
+          
+          // Attempt to extract connection data
+          const connectionResults = await debugPage.evaluate(() => {
+            const connections: Array<{ name: string, title: string, urn: string, imageUrl: string | null }> = [];
+            const cards = document.querySelectorAll('.mn-connection-card, .connection-card, .artdeco-card');
+            
+            cards.forEach(card => {
+              try {
+                // Extract profile information from card
+                const nameElement = card.querySelector('.mn-connection-card__name, .t-16, [data-test-connection-card-name]');
+                const titleElement = card.querySelector('.mn-connection-card__occupation, .t-14, [data-test-connection-card-occupation]');
+                const imgElement = card.querySelector('img');
+                const profileLink = card.querySelector('a[href*="/in/"]');
+                
+                const name = nameElement ? nameElement.textContent?.trim() || '' : '';
+                const title = titleElement ? titleElement.textContent?.trim() || '' : '';
+                const imageUrl = imgElement ? imgElement.getAttribute('src') : null;
+                
+                // Extract the URN (profile identifier) from URL
+                let urn = '';
+                if (profileLink) {
+                  const href = profileLink.getAttribute('href') || '';
+                  const match = href.match(/\/in\/([^/]+)/);
+                  urn = match ? match[1] : '';
+                }
+                
+                if (name && urn) {
+                  connections.push({ name, title, urn, imageUrl });
+                }
+              } catch (cardError) {
+                // Skip this card if there's an error
+                console.error("Error processing connection card:", cardError);
+              }
+            });
+            
+            return connections;
+          });
+          
+          addDebugLog(debugSessionId, `Found ${connectionResults.length} connections`);
+          
+          // Add results to debug log
+          if (connectionResults.length > 0) {
+            addDebugLog(debugSessionId, `Sample connection: ${JSON.stringify(connectionResults[0])}`);
+          }
+          
+          // Mark session as complete
+          completeDebugSession(debugSessionId);
+          
+        } catch (error) {
+          const extractError = error as Error;
+          addDebugLog(debugSessionId, `Error extracting connections: ${extractError.message}`);
+          throw extractError;
+        }
+        
+      } catch (error) {
+        const pageError = error as Error;
+        addDebugLog(debugSessionId, `Page error: ${pageError.message}`);
+        
+        // Try one last screenshot if possible
+        try {
+          await captureDebugScreenshot(page, debugSessionId, "Error State");
+        } catch (error) {
+          const screenshotError = error as Error;
+          addDebugLog(debugSessionId, `Failed to capture error screenshot: ${screenshotError.message}`);
+        }
+        
+        throw pageError;
+      }
+    });
+    
+  } catch (error) {
+    const { addDebugLog, completeDebugSession } = await import('../debug');
+    const typedError = error as Error;
+    addDebugLog(debugSessionId, `Search operation failed: ${typedError.message}`);
+    completeDebugSession(debugSessionId, typedError.message);
+    throw error;
   }
 }
 
