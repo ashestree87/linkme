@@ -6,7 +6,7 @@ import { launch, Page } from '@cloudflare/puppeteer';
 export type Lead = {
   urn: string;
   name: string;
-  status: "new" | "invited" | "accepted";
+  status: "new" | "invited" | "accepted" | "paused" | "failed" | "done";
 };
 
 /**

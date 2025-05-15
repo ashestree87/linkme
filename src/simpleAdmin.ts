@@ -77,8 +77,8 @@ const generateDashboardStats = (leads: LeadWithMeta[]): string => {
             <h3 class="text-lg font-semibold text-gray-500">Total Leads</h3>
             <p class="text-3xl font-bold text-gray-800">${counts.total}</p>
           </div>
-          <div class="p-3 rounded-full bg-blue-50">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div class="p-3 rounded-full bg-blue-50 flex items-center justify-center" style="width: 3rem; height: 3rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
             </svg>
           </div>
@@ -96,8 +96,8 @@ const generateDashboardStats = (leads: LeadWithMeta[]): string => {
             <h3 class="text-lg font-semibold text-gray-500">Conversion Rate</h3>
             <p class="text-3xl font-bold text-gray-800">${conversionRate}%</p>
           </div>
-          <div class="p-3 rounded-full bg-green-50">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div class="p-3 rounded-full bg-green-50 flex items-center justify-center" style="width: 3rem; height: 3rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
           </div>
@@ -114,8 +114,8 @@ const generateDashboardStats = (leads: LeadWithMeta[]): string => {
             <h3 class="text-lg font-semibold text-gray-500">Completed</h3>
             <p class="text-3xl font-bold text-gray-800">${counts.done}</p>
           </div>
-          <div class="p-3 rounded-full bg-purple-50">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div class="p-3 rounded-full bg-purple-50 flex items-center justify-center" style="width: 3rem; height: 3rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
@@ -129,8 +129,8 @@ const generateDashboardStats = (leads: LeadWithMeta[]): string => {
             <h3 class="text-lg font-semibold text-gray-500">Issues</h3>
             <p class="text-3xl font-bold text-gray-800">${counts.failed + counts.paused}</p>
           </div>
-          <div class="p-3 rounded-full bg-red-50">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div class="p-3 rounded-full bg-red-50 flex items-center justify-center" style="width: 3rem; height: 3rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
@@ -238,15 +238,17 @@ export default {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>LinkMe Admin</title>
         <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-        <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+        <script src="https://cdn.tailwindcss.com"></script>
         <style>
           .htmx-indicator { opacity: 0; transition: opacity 500ms ease-in; }
           .htmx-request .htmx-indicator { opacity: 1; }
           .htmx-request.htmx-indicator { opacity: 1; }
+          svg { max-width: 100%; max-height: 100%; }
+          .icon-container { width: 2rem; height: 2rem; }
         </style>
       </head>
       <body class="bg-gray-100 min-h-screen">
-        <div class="container mx-auto px-4 py-8">
+        <div class="container mx-auto px-4 py-8 max-w-screen-xl">
           <h1 class="text-3xl font-bold mb-8 text-blue-700">LinkMe Admin</h1>
           
           <!-- Dashboard Stats -->
@@ -274,8 +276,8 @@ export default {
                     class="py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                   >
                     Upload
-                    <span class="htmx-indicator ml-2">
-                      <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <span class="htmx-indicator ml-2 inline-block w-5 h-5">
+                      <svg class="animate-spin w-5 h-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
@@ -310,8 +312,8 @@ export default {
                       class="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     >
                       Add Lead
-                      <span class="htmx-indicator ml-2">
-                        <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <span class="htmx-indicator ml-2 inline-block w-5 h-5">
+                        <svg class="animate-spin w-5 h-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
@@ -328,8 +330,8 @@ export default {
             <!-- Leads Table (takes 2/3 of space on large screens) -->
             <div class="lg:col-span-2">
               <!-- Filter Controls -->
-              <div class="flex justify-between items-center mb-4">
-                <div class="text-sm font-medium text-gray-700">
+              <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 pb-2 border-b border-gray-200">
+                <div class="text-sm font-medium text-gray-700 mb-2 sm:mb-0">
                   <span>Viewing: </span>
                   <span class="font-semibold text-blue-600">${filteredLeads.length}</span>
                   <span> of </span>
@@ -338,9 +340,9 @@ export default {
                 </div>
                 
                 <div class="flex items-center space-x-2">
-                  <label for="status-filter" class="text-sm font-medium text-gray-700">Filter by status:</label>
+                  <label for="status-filter" class="text-sm font-medium text-gray-700">Filter:</label>
                   <select id="status-filter" 
-                    class="text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    class="text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white pl-3 pr-8 py-1.5"
                     hx-get="/"
                     hx-trigger="change"
                     hx-target="body"
@@ -382,9 +384,13 @@ export default {
               <div id="lead-detail-container" class="sticky top-4">
                 <!-- Lead details will be loaded here -->
                 <div class="bg-white p-6 rounded-lg shadow-md text-center text-gray-500">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                  <div class="flex justify-center mb-4">
+                    <div class="w-12 h-12 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                  </div>
                   <p>Select a lead to view details</p>
                 </div>
               </div>
@@ -692,22 +698,29 @@ export default {
         <td class="px-6 py-4 text-right">
           ${lead.status !== 'paused' ? `
             <button 
-              class="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+              class="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 flex items-center gap-1 inline-flex text-xs font-medium"
               hx-post="/pause/${lead.urn}"
               hx-target="#lead-${lead.urn}"
               hx-swap="outerHTML"
               hx-confirm="Are you sure you want to pause processing for ${lead.name}?"
             >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
               Pause
             </button>
           ` : `
             <button 
-              class="px-3 py-1 bg-blue-200 text-blue-700 rounded hover:bg-blue-300"
+              class="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 flex items-center gap-1 inline-flex text-xs font-medium"
               hx-post="/resume/${lead.urn}"
               hx-target="#lead-${lead.urn}"
               hx-swap="outerHTML"
               hx-confirm="Are you sure you want to resume processing for ${lead.name}?"
             >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
               Resume
             </button>
           `}
@@ -824,13 +837,13 @@ export default {
           <div class="flex justify-between items-start">
             <h2 class="text-xl font-semibold mb-4">Lead Details</h2>
             <button 
-              class="text-gray-400 hover:text-gray-600"
+              class="text-gray-400 hover:text-gray-600 w-6 h-6 flex items-center justify-center"
               hx-get="#"
               hx-trigger="click"
               hx-target="#lead-detail-container"
               hx-swap="innerHTML"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -853,33 +866,43 @@ export default {
             </div>
           </div>
           
-          <div class="flex space-x-2 mt-6">
+          <div class="flex flex-wrap gap-2 mt-6">
             ${lead.status !== 'paused' ? `
               <button 
-                class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex items-center gap-1"
                 hx-post="/pause/${lead.urn}"
                 hx-confirm="Are you sure you want to pause processing for ${lead.name}?"
                 hx-target="#lead-${lead.urn}"
                 hx-swap="outerHTML"
                 hx-on="htmx:afterOnLoad: document.getElementById('lead-detail-container').innerHTML = ''"
               >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 Pause Lead
               </button>
             ` : `
               <button 
-                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
                 hx-post="/resume/${lead.urn}"
                 hx-confirm="Are you sure you want to resume processing for ${lead.name}?"
                 hx-target="#lead-${lead.urn}"
                 hx-swap="outerHTML"
                 hx-on="htmx:afterOnLoad: document.getElementById('lead-detail-container').innerHTML = ''"
               >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 Resume Lead
               </button>
             `}
             
             <a href="https://www.linkedin.com/sales/lead/${lead.urn}" target="_blank" rel="noopener noreferrer"
-               class="px-4 py-2 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">
+               class="px-4 py-2 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
               View on LinkedIn
             </a>
           </div>
@@ -901,12 +924,15 @@ export default {
           <h2 class="text-xl font-semibold mb-4 text-red-600">Error Loading Lead Details</h2>
           <p>${error instanceof Error ? error.message : String(error)}</p>
           <button 
-            class="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+            class="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex items-center gap-1"
             hx-get="#"
             hx-trigger="click"
             hx-target="#lead-detail-container"
             hx-swap="innerHTML"
           >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
             Close
           </button>
         </div>
