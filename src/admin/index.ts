@@ -1,7 +1,7 @@
 import { AdminEnv, LeadWithMeta, LinkedInProfile } from './types';
 import { getLeadsFromKV, parseCSV, generateDashboardStats } from './utils';
 import { generateLeadsTable, generateLeadDetails, generateLeadDetailsError } from './leadsTable';
-import { generateConnectionsView, handleLinkedInSearch, handleImportConnection } from './linkedInSearch';
+import { generateConnectionsView, handleLinkedInSearch, handleImportConnection, handleSearchConnections } from './linkedInSearch';
 
 /**
  * Main admin handler
@@ -45,6 +45,11 @@ export default {
         // Handle LinkedIn search
         if (path === '/search-linkedin') {
           return await handleLinkedInSearch(request, env);
+        }
+        
+        // Handle connections search
+        if (path === '/search-connections') {
+          return await handleSearchConnections(request, env);
         }
         
         // Handle import connection

@@ -14,6 +14,12 @@ export function generateConnectionsView(): string {
       <title>LinkMe - Admin - Connections</title>
       <script src="https://cdn.tailwindcss.com"></script>
       <script src="https://unpkg.com/htmx.org@1.9.2"></script>
+      <script>
+        // Set htmx to use relative URLs
+        document.addEventListener('DOMContentLoaded', function() {
+          htmx.config.baseURL = '';
+        });
+      </script>
     </head>
     <body class="bg-gray-50 min-h-screen">
       <div class="container mx-auto px-4 py-8">
@@ -31,7 +37,7 @@ export function generateConnectionsView(): string {
           <!-- LinkedIn Search -->
           <div class="bg-white shadow-md rounded-lg p-6 border border-gray-200">
             <h2 class="text-xl font-semibold mb-4">LinkedIn Search</h2>
-            <form hx-post="/search-linkedin" hx-target="#search-results" class="space-y-4">
+            <form hx-post="./search-linkedin" hx-target="#search-results" class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Keywords</label>
                 <input type="text" name="keywords" placeholder="Job title, skills, etc." class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
@@ -56,7 +62,7 @@ export function generateConnectionsView(): string {
           <!-- Existing Connections -->
           <div class="bg-white shadow-md rounded-lg p-6 border border-gray-200">
             <h2 class="text-xl font-semibold mb-4">Find Existing Connections</h2>
-            <form hx-post="/search-connections" hx-target="#search-results" class="space-y-4">
+            <form hx-post="./search-connections" hx-target="#search-results" class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
                 <input type="text" name="title" placeholder="CEO, Developer, etc." class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
@@ -421,4 +427,221 @@ export async function handleImportConnection(request: Request, env: AdminEnv): P
       headers: { 'Content-Type': 'text/html' },
     });
   }
+}
+
+/**
+ * Handle searching existing connections
+ */
+export async function handleSearchConnections(request: Request, env: AdminEnv): Promise<Response> {
+  try {
+    // Parse form data
+    const formData = await request.formData();
+    const title = formData.get('title') as string || '';
+    const company = formData.get('company') as string || '';
+    const industry = formData.get('industry') as string || '';
+    
+    console.log('Searching connections with:', { title, company, industry });
+    
+    // If LinkedIn credentials are not configured, return an error
+    if (!env.LI_AT || !env.CSRF || !env.USERAGENT) {
+      return new Response(`
+        <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
+          <div class="flex">
+            <div class="flex-shrink-0">
+              <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <p class="text-sm leading-5 text-red-700">
+                LinkedIn credentials not configured. Please add LI_AT, CSRF, and USERAGENT environment variables.
+              </p>
+            </div>
+          </div>
+        </div>
+      `, {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+    
+    // Use browser to search for connections
+    const results = await withBrowser(async (page) => {
+      // Go to LinkedIn network page where connections are listed
+      await page.goto('https://www.linkedin.com/mynetwork/invite-connect/connections/', { 
+        waitUntil: 'networkidle0' 
+      });
+      
+      // Wait for connections to load
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Extract connections that match our criteria
+      return await page.evaluate((searchTitle, searchCompany, searchIndustry) => {
+        const results: Array<{
+          urn: string;
+          name: string;
+          title: string;
+          company: string;
+          location: string;
+          imageUrl: string | null;
+        }> = [];
+        const connectionCards = document.querySelectorAll('.mn-connection-card');
+        
+        // Convert NodeList to Array to avoid iterator issues
+        Array.from(connectionCards).forEach(card => {
+          try {
+            // Extract basic info
+            const nameEl = card.querySelector('.mn-connection-card__name');
+            const occupationEl = card.querySelector('.mn-connection-card__occupation');
+            const imageEl = card.querySelector('.presence-entity__image');
+            
+            if (!nameEl || !occupationEl) return;
+            
+            const name = nameEl.textContent?.trim() || '';
+            const occupation = occupationEl.textContent?.trim() || '';
+            const imageUrl = imageEl ? (imageEl as HTMLImageElement).src : null;
+            
+            // Extract profile link to get URN
+            const linkEl = card.querySelector('.mn-connection-card__link');
+            const profileUrl = linkEl ? (linkEl as HTMLAnchorElement).href : '';
+            
+            // Extract URN from URL if possible
+            let urn = '';
+            const urlParts = profileUrl.split('/');
+            if (urlParts.length > 0) {
+              urn = urlParts[urlParts.length - 1] || urlParts[urlParts.length - 2] || '';
+            }
+            
+            // Parse occupation into title and company
+            let title = occupation;
+            let company = '';
+            
+            if (occupation.includes(' at ')) {
+              const parts = occupation.split(' at ');
+              title = parts[0].trim();
+              company = parts[1].trim();
+            }
+            
+            // Filter based on search criteria
+            const matchesTitle = !searchTitle || title.toLowerCase().includes(searchTitle.toLowerCase());
+            const matchesCompany = !searchCompany || company.toLowerCase().includes(searchCompany.toLowerCase());
+            // We don't have industry info in the connections list, so skip this filter if it's provided
+            const matchesIndustry = !searchIndustry;
+            
+            if (matchesTitle && matchesCompany && matchesIndustry) {
+              results.push({
+                urn,
+                name,
+                title,
+                company,
+                location: '',  // Location isn't available in the connections list
+                imageUrl
+              });
+            }
+          } catch (e) {
+            console.error('Error parsing connection card:', e);
+          }
+        });
+        
+        return results;
+      }, title, company, industry);
+    });
+    
+    console.log(`Found ${results.length} matching connections`);
+    
+    // Generate HTML for results
+    const resultsHtml = generateSearchResultsHtml(results);
+    
+    return new Response(resultsHtml, {
+      headers: { 'Content-Type': 'text/html' },
+    });
+  } catch (error) {
+    console.error('Error searching connections:', error);
+    
+    return new Response(`
+      <div class="bg-red-50 border-l-4 border-red-400 p-4">
+        <div class="flex">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm leading-5 text-red-700">
+              Error searching connections: ${error instanceof Error ? error.message : String(error)}
+            </p>
+          </div>
+        </div>
+      </div>
+    `, {
+      headers: { 'Content-Type': 'text/html' },
+    });
+  }
+}
+
+// Helper function to generate HTML for search results
+function generateSearchResultsHtml(profiles: LinkedInProfile[]): string {
+  if (profiles.length === 0) {
+    return `
+      <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+        <div class="flex">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm leading-5 text-yellow-700">
+              No results found. Try different search criteria.
+            </p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  
+  // Generate result cards
+  const cards = profiles.map(profile => `
+    <div class="bg-white shadow overflow-hidden rounded-lg mb-4">
+      <div class="px-4 py-5 sm:px-6 flex items-center">
+        ${profile.imageUrl ? 
+          `<img src="${profile.imageUrl}" alt="${profile.name}" class="h-16 w-16 rounded-full mr-4">` : 
+          `<div class="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center mr-4">
+            <svg class="h-8 w-8 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM12 6c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z"/>
+            </svg>
+          </div>`
+        }
+        <div>
+          <h3 class="text-lg leading-6 font-medium text-gray-900">${profile.name}</h3>
+          <p class="mt-1 max-w-2xl text-sm text-gray-500">${profile.title}${profile.company ? ` at ${profile.company}` : ''}</p>
+          ${profile.location ? `<p class="mt-1 max-w-2xl text-sm text-gray-500">${profile.location}</p>` : ''}
+        </div>
+        <div class="ml-auto">
+          <form hx-post="./import-connection" hx-swap="outerHTML" class="flex justify-end">
+            <input type="hidden" name="urn" value="${profile.urn}">
+            <input type="hidden" name="name" value="${profile.name}">
+            <input type="hidden" name="title" value="${profile.title}">
+            <input type="hidden" name="company" value="${profile.company}">
+            <input type="hidden" name="location" value="${profile.location || ''}">
+            <input type="hidden" name="imageUrl" value="${profile.imageUrl || ''}">
+            <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent text-sm leading-5 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-500 focus:outline-none focus:border-blue-700 focus:shadow-outline-blue active:bg-blue-700">
+              <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
+              </svg>
+              Add as Lead
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  `).join('');
+  
+  return `
+    <div class="bg-white shadow-md rounded-lg overflow-hidden border border-gray-200 p-4">
+      <h2 class="text-xl font-semibold mb-4">Search Results (${profiles.length})</h2>
+      <div class="space-y-4">
+        ${cards}
+      </div>
+    </div>
+  `;
 } 
