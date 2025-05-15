@@ -1028,15 +1028,7 @@ async function searchConnectionsBackground(
   const { title, company, industry } = criteria;
   
   try {
-    const { withHumanBrowser, withBrowser } = await import('../common');
-    const { 
-      addDebugLog, 
-      captureDebugScreenshot, 
-      createDebugEnabledPage, 
-      completeDebugSession,
-      addTestScreenshot,
-      getDebugSessionWithDiagnostics
-    } = await import('../debug');
+    const { addDebugLog, addTestScreenshot, getDebugSessionWithDiagnostics, completeDebugSession } = await import('../debug');
     
     // Log the start of the process
     addDebugLog(debugSessionId, "Starting LinkedIn connections search");
@@ -1051,254 +1043,61 @@ async function searchConnectionsBackground(
       addDebugLog(debugSessionId, `Debug session diagnostics: ${JSON.stringify(diagnostics._diagnostics)}`);
     }
     
-    // Create a global timeout for the entire search operation
-    const globalTimeout = setTimeout(() => {
-      addDebugLog(debugSessionId, "Search operation timed out after 5 minutes");
-      completeDebugSession(debugSessionId, "Search timed out");
-    }, 300000); // 5 minute timeout
+    // Skip the browser launch for now and try a more direct approach
+    addDebugLog(debugSessionId, "Bypassing browser launch for troubleshooting");
     
-    try {
-      // First try with human browser
-      addDebugLog(debugSessionId, "Attempting to use human-like browser");
-      
-      // Create a specific timeout for human browser
-      const humanBrowserTimeout = setTimeout(() => {
-        throw new Error("Human browser operation timed out after 2 minutes");
-      }, 120000); // 2 minute timeout
-      
-      try {
-        await withHumanBrowser<void>(async (page) => {
-          addDebugLog(debugSessionId, "Human browser launched successfully");
-          try {
-            // Configure screenshot settings
-            const config = {
-              enabled: true,
-              frequency: 'high' as 'high',
-              saveLocally: false,
-              maxScreenshots: 30
-            };
-            
-            // Wrap page with debug capabilities
-            addDebugLog(debugSessionId, "Creating debug-enabled page");
-            const debugPage = createDebugEnabledPage(page, debugSessionId, config);
-            addDebugLog(debugSessionId, "Debug-enabled page created");
-            
-            // Test screenshot capture again with the browser page
-            try {
-              addDebugLog(debugSessionId, "Testing browser screenshot capture");
-              await captureDebugScreenshot(debugPage, debugSessionId, "Browser Test Screenshot");
-            } catch (screenshotError) {
-              addDebugLog(debugSessionId, `Test screenshot failed: ${screenshotError}`);
-            }
-            
-            // Small delay to ensure the page loads properly - simulate human behavior
-            await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
-            
-            // Try to capture screenshot after navigation completed
-            try {
-              await captureDebugScreenshot(debugPage, debugSessionId, "After Navigation Completed");
-            } catch (error) {
-              const screenshotError = error as Error;
-              addDebugLog(debugSessionId, `Screenshot error after navigation: ${screenshotError.message}`);
-            }
-            
-            // Perform the actual LinkedIn connection search
-            addDebugLog(debugSessionId, "Starting LinkedIn connection search process");
-            
-            // Build search query from criteria
-            let searchQuery = '';
-            if (title) searchQuery += title + ' ';
-            if (company) searchQuery += company + ' ';
-            if (industry) searchQuery += industry + ' ';
-            searchQuery = searchQuery.trim();
-            
-            if (!searchQuery) {
-              searchQuery = "connections"; // Default search if no criteria provided
-            }
-            
-            addDebugLog(debugSessionId, `Searching for connections with query: "${searchQuery}"`);
-            
-            try {
-              // Import the LinkedIn search function
-              const { searchConnections } = await import('../linkedin-actions');
-              
-              // Capture screenshot before search
-              await captureDebugScreenshot(debugPage, debugSessionId, "Before Search");
-              
-              // Perform the actual search
-              const searchResult = await searchConnections(searchQuery, 20);
-              
-              // Capture screenshot after search
-              await captureDebugScreenshot(debugPage, debugSessionId, "After Search");
-              
-              // Log the results
-              if (searchResult.success) {
-                const connectionCount = searchResult.connections?.length || 0;
-                addDebugLog(debugSessionId, `Search successful! Found ${connectionCount} connections matching criteria`);
-                
-                // Log details of each connection
-                if (searchResult.connections && searchResult.connections.length > 0) {
-                  addDebugLog(debugSessionId, "Connection results:");
-                  searchResult.connections.forEach((conn, index) => {
-                    addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
-                  });
-                }
-              } else {
-                addDebugLog(debugSessionId, `Search failed: ${searchResult.message}`);
-              }
-              
-              // Complete the session successfully
-              completeDebugSession(debugSessionId);
-              
-            } catch (searchError) {
-              const typedError = searchError as Error;
-              addDebugLog(debugSessionId, `Error during connection search: ${typedError.message}`);
-              
-              // Try to capture error state
-              await captureDebugScreenshot(debugPage, debugSessionId, "Search Error State");
-              
-              // Complete with error
-              completeDebugSession(debugSessionId, typedError.message);
-            }
-            
-          } catch (error) {
-            const pageError = error as Error;
-            addDebugLog(debugSessionId, `Page error: ${pageError.message}`);
-            
-            // Try one last screenshot if possible
-            try {
-              await captureDebugScreenshot(page, debugSessionId, "Error State");
-            } catch (error) {
-              const screenshotError = error as Error;
-              addDebugLog(debugSessionId, `Failed to capture error screenshot: ${screenshotError.message}`);
-            }
-            
-            throw pageError;
-          }
-        });
-        
-        // Clear timeout if human browser completes successfully
-        clearTimeout(humanBrowserTimeout);
-        addDebugLog(debugSessionId, "Human browser search completed successfully");
-        
-      } catch (browserError: unknown) {
-        // Clear the timeout since we're handling the error
-        clearTimeout(humanBrowserTimeout);
-        
-        // If human browser fails, try with regular browser as fallback
-        const typedError = browserError as Error;
-        addDebugLog(debugSessionId, `Human browser failed: ${typedError.message || 'Unknown error'}`);
-        if (typedError.stack) {
-          addDebugLog(debugSessionId, `Error stack: ${typedError.stack.split('\n')[0]}`);
-        }
-        addDebugLog(debugSessionId, "Trying with standard browser...");
-        
-        // Fallback to regular browser
-        await withBrowser<void>(async (page) => {
-          try {
-            // Configure screenshot settings
-            const config = {
-              enabled: true,
-              frequency: 'high' as 'high',
-              saveLocally: false,
-              maxScreenshots: 30
-            };
-            
-            // Wrap page with debug capabilities
-            const debugPage = createDebugEnabledPage(page, debugSessionId, config);
-            
-            addDebugLog(debugSessionId, "Using standard browser as fallback");
-            
-            // Test screenshot with standard browser
-            try {
-              await captureDebugScreenshot(debugPage, debugSessionId, "Standard Browser Test");
-              addDebugLog(debugSessionId, "Standard browser screenshot test succeeded");
-            } catch (screenshotError) {
-              addDebugLog(debugSessionId, `Standard browser screenshot test failed: ${screenshotError}`);
-            }
-            
-            // Perform the actual LinkedIn connection search with standard browser
-            addDebugLog(debugSessionId, "Starting LinkedIn connection search with standard browser");
-            
-            // Build search query from criteria
-            let searchQuery = '';
-            if (title) searchQuery += title + ' ';
-            if (company) searchQuery += company + ' ';
-            if (industry) searchQuery += industry + ' ';
-            searchQuery = searchQuery.trim();
-            
-            if (!searchQuery) {
-              searchQuery = "connections"; // Default search if no criteria provided
-            }
-            
-            addDebugLog(debugSessionId, `Searching for connections with query: "${searchQuery}"`);
-            
-            try {
-              // Import the LinkedIn search function
-              const { searchConnections } = await import('../linkedin-actions');
-              
-              // Perform the actual search
-              const searchResult = await searchConnections(searchQuery, 20);
-              
-              // Capture screenshot after search
-              await captureDebugScreenshot(debugPage, debugSessionId, "After Standard Browser Search");
-              
-              // Log the results
-              if (searchResult.success) {
-                const connectionCount = searchResult.connections?.length || 0;
-                addDebugLog(debugSessionId, `Search successful! Found ${connectionCount} connections matching criteria`);
-                
-                // Log details of each connection
-                if (searchResult.connections && searchResult.connections.length > 0) {
-                  addDebugLog(debugSessionId, "Connection results:");
-                  searchResult.connections.forEach((conn, index) => {
-                    addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
-                  });
-                }
-              } else {
-                addDebugLog(debugSessionId, `Search failed: ${searchResult.message}`);
-              }
-            } catch (searchError) {
-              const typedError = searchError as Error;
-              addDebugLog(debugSessionId, `Error during standard browser search: ${typedError.message}`);
-              
-              // Try to capture error state
-              await captureDebugScreenshot(debugPage, debugSessionId, "Standard Search Error State");
-            }
-            
-            // Add final test screenshot
-            addTestScreenshot(debugSessionId);
-            
-            // Complete the session
-            completeDebugSession(debugSessionId);
-          } catch (error) {
-            const pageError = error as Error;
-            addDebugLog(debugSessionId, `Fallback browser error: ${pageError.message}`);
-            throw pageError;
-          }
-        });
-      }
-      
-      // Clear the global timeout since we've completed
-      clearTimeout(globalTimeout);
-      
-    } catch (error) {
-      // Clear the global timeout since we're handling the error
-      clearTimeout(globalTimeout);
-      
-      const { addDebugLog, completeDebugSession } = await import('../debug');
-      const typedError = error as Error;
-      addDebugLog(debugSessionId, `Search operation failed: ${typedError.message}`);
-      completeDebugSession(debugSessionId, typedError.message);
-      throw error;
+    // Create search query from criteria
+    let searchQuery = '';
+    if (title) searchQuery += title + ' ';
+    if (company) searchQuery += company + ' ';
+    if (industry) searchQuery += industry + ' ';
+    searchQuery = searchQuery.trim();
+    
+    if (!searchQuery) {
+      searchQuery = "connections"; // Default search if no criteria provided
     }
-  } catch (finalError) {
-    console.error("Final error handler:", finalError);
-    throw finalError;
+    
+    addDebugLog(debugSessionId, `Would search for connections with query: "${searchQuery}"`);
+    
+    // Mock some search results for testing without browser
+    addDebugLog(debugSessionId, "Generating mock search results for testing");
+    
+    // Simulate waiting for results - this will help determine if the issue is with timing out
+    addDebugLog(debugSessionId, "Waiting 5 seconds to simulate search process...");
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    addDebugLog(debugSessionId, "Waiting period completed successfully");
+    
+    // Mock some results - these are completely fake and just for testing the flow
+    const mockResults = [
+      { name: "John Smith", profileUrl: "https://linkedin.com/in/johnsmith", urn: "johnsmith" },
+      { name: "Jane Doe", profileUrl: "https://linkedin.com/in/janedoe", urn: "janedoe" },
+      { name: "Bob Johnson", profileUrl: "https://linkedin.com/in/bobjohnson", urn: "bobjohnson" }
+    ];
+    
+    // Log the mock results
+    addDebugLog(debugSessionId, `Test successful! Found ${mockResults.length} mock connections`);
+    mockResults.forEach((conn, index) => {
+      addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
+    });
+    
+    // Complete the debug session
+    addDebugLog(debugSessionId, "Search process completed");
+    completeDebugSession(debugSessionId, "Test completed with mock data");
+    
+  } catch (error) {
+    // Import debug functions if not already imported
+    const { addDebugLog, completeDebugSession } = await import('../debug');
+    
+    const typedError = error as Error;
+    const errorMessage = typedError.message || String(error);
+    const stackTrace = typedError.stack || 'No stack trace';
+    
+    addDebugLog(debugSessionId, `ERROR: ${errorMessage}`);
+    addDebugLog(debugSessionId, `Stack trace: ${stackTrace}`);
+    
+    completeDebugSession(debugSessionId, `Error: ${errorMessage}`);
   }
-  
-  // Make sure the function is properly closed and returns void
-  return;
 }
 
 // Helper function to generate HTML for search results
