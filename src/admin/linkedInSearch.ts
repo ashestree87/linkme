@@ -1028,7 +1028,7 @@ async function searchConnectionsBackground(
   const { title, company, industry } = criteria;
   
   try {
-    const { addDebugLog, addTestScreenshot, completeDebugSession } = await import('../debug');
+    const { addDebugLog, addTestScreenshot, completeDebugSession, addDebugScreenshot } = await import('../debug');
     
     // Log the start of the process
     addDebugLog(debugSessionId, "Starting LinkedIn connections search");
@@ -1050,7 +1050,7 @@ async function searchConnectionsBackground(
     
     addDebugLog(debugSessionId, `Will search for connections with query: "${searchQuery}"`);
     
-    // Immediately return mock data to keep UI responsive
+    // Return early but don't complete the session yet
     const mockResults = [
       { name: "John Smith (CEO)", profileUrl: "https://linkedin.com/in/johnsmith", urn: "johnsmith" },
       { name: "Jane Doe (CEO at Acme Corp)", profileUrl: "https://linkedin.com/in/janedoe", urn: "janedoe" },
@@ -1059,58 +1059,278 @@ async function searchConnectionsBackground(
       { name: "Michael Brown (CEO, Tech Innovations)", profileUrl: "https://linkedin.com/in/michaelbrown", urn: "michaelbrown" }
     ];
     
-    addDebugLog(debugSessionId, `Returning ${mockResults.length} mock connections for immediate response`);
-    mockResults.forEach((conn: any, index: number) => {
-      addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
-    });
+    addDebugLog(debugSessionId, `Prepared ${mockResults.length} backup connections (will try real data first)`);
     
-    // Mark the debug session as completed early so the UI can proceed
-    completeDebugSession(debugSessionId, "Mock data provided for immediate response");
-    
-    // Continue with browser attempt in the background, but don't block the UI
-    // We'll wrap this in a try/catch and purposely not await it
     try {
-      // Background process for browser operations
-      (async () => {
+      // Try to properly access the browser
+      addDebugLog(debugSessionId, "Importing Cloudflare puppeteer");
+      
+      // Proper browser import with proper error handling
+      const puppeteer = await import('@cloudflare/puppeteer');
+      addDebugLog(debugSessionId, "Successfully imported puppeteer");
+      
+      // Explicitly check if CRAWLER_BROWSER exists and is valid
+      if (!env.CRAWLER_BROWSER) {
+        throw new Error("CRAWLER_BROWSER binding is missing");
+      }
+      
+      addDebugLog(debugSessionId, "Browser binding exists, attempting to launch browser");
+      
+      // Launch browser with proper timeout handling
+      const browserLaunchTimeout = new Promise((_, reject) => {
+        const id = setTimeout(() => {
+          clearTimeout(id);
+          reject(new Error('Browser launch timed out after 20 seconds'));
+        }, 20000);
+      });
+      
+      // Use official launch approach with proper timeout
+      const browser = await Promise.race([
+        puppeteer.launch(env.CRAWLER_BROWSER),
+        browserLaunchTimeout
+      ]);
+      
+      addDebugLog(debugSessionId, "👍 Browser launched successfully!");
+      
+      // Create a new page
+      const page = await browser.newPage();
+      addDebugLog(debugSessionId, "Browser page created");
+      
+      // Set a realistic user agent
+      await page.setUserAgent(env.USERAGENT);
+      
+      // Set LinkedIn cookies
+      addDebugLog(debugSessionId, "Setting LinkedIn cookies");
+      await page.setCookie({
+        name: 'li_at',
+        value: env.LI_AT,
+        domain: '.linkedin.com',
+        path: '/',
+        httpOnly: true,
+        secure: true
+      });
+      
+      // Navigate to LinkedIn 
+      addDebugLog(debugSessionId, "Navigating to LinkedIn");
+      await page.goto('https://www.linkedin.com/', { 
+        waitUntil: 'domcontentloaded',
+        timeout: 15000
+      });
+      
+      // Take screenshot if possible
+      try {
+        const screenshot = await page.screenshot({ 
+          type: 'jpeg', 
+          quality: 60,
+          fullPage: false
+        });
+        
+        // Convert screenshot buffer to base64
+        const base64Image = Buffer.from(screenshot).toString('base64');
+        addDebugLog(debugSessionId, "Successfully captured LinkedIn screenshot");
+        
+        // Add screenshot to debug
+        addDebugScreenshot(debugSessionId, "LinkedIn Homepage", base64Image);
+      } catch (screenshotError) {
+        const errorMsg = screenshotError instanceof Error ? screenshotError.message : String(screenshotError);
+        addDebugLog(debugSessionId, `Screenshot error: ${errorMsg}`);
+      }
+      
+      // Navigate to connections page
+      addDebugLog(debugSessionId, "Navigating to connections page");
+      await page.goto('https://www.linkedin.com/mynetwork/invite-connect/connections/', {
+        waitUntil: 'domcontentloaded',
+        timeout: 15000
+      });
+      
+      // Look for the search input
+      let searchInput = null;
+      const searchSelectors = [
+        'input[placeholder*="Search connections"]',
+        'input[placeholder*="Search by name"]',
+        'input.mn-connections__search-input',
+        'input[aria-label="Search connections"]'
+      ];
+      
+      for (const selector of searchSelectors) {
         try {
-          addDebugLog(debugSessionId, "Attempting browser launch in background (non-blocking)");
-          const puppeteer = await import('@cloudflare/puppeteer');
+          searchInput = await page.$(selector);
+          if (searchInput) {
+            addDebugLog(debugSessionId, `Found search input with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // Continue to next selector
+        }
+      }
+      
+      if (!searchInput) {
+        addDebugLog(debugSessionId, "Could not find search input, getting visible connections");
+        
+        // Extract connections without searching
+        const connections = await page.evaluate(() => {
+          const cardSelectors = [
+            '.mn-connections__card',
+            '.mn-connection-card',
+            'li.connection-card'
+          ];
           
-          // Set a timeout for the browser launch
-          const timeoutPromise = new Promise((_: any, reject: any) => {
-            setTimeout(() => reject(new Error("Browser launch timed out")), 10000);
+          // Find connection cards
+          let cards = [];
+          for (const selector of cardSelectors) {
+            const elements = document.querySelectorAll(selector);
+            if (elements.length > 0) {
+              cards = Array.from(elements);
+              break;
+            }
+          }
+          
+          // Extract data from cards
+          return cards.map(card => {
+            const nameEl = card.querySelector('.mn-connection-card__name, .name');
+            const linkEl = card.querySelector('a[href*="/in/"]');
+            
+            return {
+              name: nameEl?.textContent?.trim() || 'Unknown',
+              profileUrl: linkEl?.href || '',
+              urn: linkEl?.href?.match(/\/in\/([^\/]+)/)?.[1] || ''
+            };
+          }).filter(c => c.profileUrl);
+        });
+        
+        if (connections && connections.length > 0) {
+          addDebugLog(debugSessionId, `Successfully found ${connections.length} LinkedIn connections!`);
+          
+          // Log the connections found
+          connections.forEach((conn, i) => {
+            addDebugLog(debugSessionId, `${i+1}. ${conn.name} - ${conn.profileUrl}`);
           });
           
-          // Try to launch browser with timeout
-          const browser = await Promise.race([
-            puppeteer.launch(env.CRAWLER_BROWSER),
-            timeoutPromise
-          ]) as any;
+          // Complete the session with real data
+          completeDebugSession(debugSessionId, "Successfully retrieved LinkedIn connections");
           
-          addDebugLog(debugSessionId, "Browser launched successfully in background");
+          // Close browser properly
+          await browser.close();
+          addDebugLog(debugSessionId, "Browser closed successfully");
           
-          // Basic page creation
-          const page = await browser.newPage();
-          addDebugLog(debugSessionId, "Browser page created successfully");
+          // Return with real data
+          return;
+        } else {
+          addDebugLog(debugSessionId, "No connections found on page, falling back to search");
+        }
+      } else {
+        // We found the search input, perform search
+        addDebugLog(debugSessionId, `Found search input, searching for: ${searchQuery}`);
+        
+        // Type into search box
+        await searchInput.click();
+        await searchInput.type(searchQuery);
+        await page.keyboard.press('Enter');
+        
+        // Wait for results
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Take screenshot of results
+        try {
+          const screenshot = await page.screenshot({ 
+            type: 'jpeg', 
+            quality: 60,
+            fullPage: false
+          });
+          
+          // Convert screenshot to base64
+          const base64Image = Buffer.from(screenshot).toString('base64');
+          addDebugLog(debugSessionId, "Captured search results screenshot");
+          
+          // Add to debug
+          addDebugScreenshot(debugSessionId, "Search Results", base64Image);
+        } catch (error) {
+          addDebugLog(debugSessionId, `Search results screenshot error: ${error}`);
+        }
+        
+        // Extract search results
+        const searchResults = await page.evaluate(() => {
+          const resultSelectors = [
+            '.mn-connections__card',
+            '.mn-connection-card',
+            '.search-result', 
+            '.entity-result'
+          ];
+          
+          // Find results
+          let results = [];
+          for (const selector of resultSelectors) {
+            const elements = document.querySelectorAll(selector);
+            if (elements.length > 0) {
+              results = Array.from(elements);
+              break;
+            }
+          }
+          
+          // Extract data
+          return results.map(result => {
+            const nameEl = result.querySelector('.name, .actor-name, h3');
+            const linkEl = result.querySelector('a[href*="/in/"]');
+            
+            return {
+              name: nameEl?.textContent?.trim() || 'Unknown',
+              profileUrl: linkEl?.href || '',
+              urn: linkEl?.href?.match(/\/in\/([^\/]+)/)?.[1] || ''
+            };
+          }).filter(r => r.profileUrl);
+        });
+        
+        if (searchResults && searchResults.length > 0) {
+          addDebugLog(debugSessionId, `Found ${searchResults.length} search results for "${searchQuery}"`);
+          
+          // Log search results
+          searchResults.forEach((result, i) => {
+            addDebugLog(debugSessionId, `${i+1}. ${result.name} - ${result.profileUrl}`);
+          });
+          
+          // Complete session with real data
+          completeDebugSession(debugSessionId, `Successfully found ${searchResults.length} LinkedIn profiles matching "${searchQuery}"`);
           
           // Close browser
           await browser.close();
           addDebugLog(debugSessionId, "Browser closed successfully");
           
-        } catch (error) {
-          // Just log the error but don't fail the overall operation
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          addDebugLog(debugSessionId, `Background browser operation failed: ${errorMessage}`);
+          // Return with real data
+          return;
+        } else {
+          addDebugLog(debugSessionId, `No search results found for "${searchQuery}"`);
         }
-      })();
+      }
       
-    } catch (err) {
-      // Ignore any errors in the background task
-      addDebugLog(debugSessionId, "Background task had an issue but it was suppressed");
+      // If we get here, we couldn't find any real results
+      await browser.close();
+      addDebugLog(debugSessionId, "Browser closed");
+      
+    } catch (error) {
+      // Log the browser error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      addDebugLog(debugSessionId, `Browser error: ${errorMessage}`);
+      
+      if (error instanceof Error && error.stack) {
+        const stackLines = error.stack.split('\n').slice(0, 3);
+        addDebugLog(debugSessionId, `Error stack: ${stackLines.join(' | ')}`);
+      }
     }
     
+    // If we get here, we're falling back to mock data
+    addDebugLog(debugSessionId, "Falling back to mock data");
+    
+    // Return mock data as fallback
+    addDebugLog(debugSessionId, `Returning ${mockResults.length} mock connections as fallback`);
+    mockResults.forEach((conn: any, index: number) => {
+      addDebugLog(debugSessionId, `${index + 1}. ${conn.name} - ${conn.profileUrl}`);
+    });
+    
+    // Complete the session with mock data
+    completeDebugSession(debugSessionId, "Completed with mock data (real data unavailable)");
+    
   } catch (error) {
-    // Global error handler - this should rarely be reached now
+    // Global error handler
     const { addDebugLog, completeDebugSession } = await import('../debug');
     
     const typedError = error as Error;
