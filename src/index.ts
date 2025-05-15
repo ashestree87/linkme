@@ -1,17 +1,14 @@
-import adminUI from './adminUI';
-import simpleAdmin from './simpleAdmin';
+import adminHandlers from './admin/index';
+import { AdminEnv } from './admin/types';
 import sendConnection from './sendConnection';
 import sendDM from './sendDM';
-import scheduler from './scheduler';
-import webhook from './webhook';
-import debug from './debug';
 
 /**
  * Main entry point for the LinkMe application.
  * This file combines all the different features into a single worker.
  */
 
-export interface Env {
+export interface Env extends AdminEnv {
   // KV Namespaces
   TARGETS: KVNamespace;
   
@@ -38,77 +35,48 @@ export default {
    * but route /accepted to the webhook handler
    */
   async fetch(request: Request, env: Env): Promise<Response> {
-    // Store environment in global context for access in other modules
-    (globalThis as any).ENVIRONMENT = env;
-    
-    const url = new URL(request.url);
-    
-    // Route /accepted to webhook handler
-    if (url.pathname === '/accepted') {
-      return webhook.fetch(request, env);
-    }
-    
-    // Route /debug to diagnostic page
-    if (url.pathname === '/debug') {
-      return debug.fetch(request, env);
-    }
-    
-    // Root route - use the simple admin UI instead of the router-based one
-    if (url.pathname === '/' || url.pathname === '') {
-      try {
-        // Use the simpler admin UI to avoid router issues
-        return await simpleAdmin.fetch(request, env);
-      } catch (error) {
-        console.error("Error in simpleAdmin:", error);
-        
-        // Create a simple error response
-        const errorHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>LinkMe - Error</title>
-          <link href="https://cdn.tailwindcss.com" rel="stylesheet">
-        </head>
-        <body class="bg-gray-100 min-h-screen p-8">
-          <div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6">
-            <h1 class="text-2xl font-bold text-red-600 mb-4">Error Loading Admin UI</h1>
-            <p class="mb-4">There was an error loading the LinkMe Admin UI:</p>
-            <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded mb-4">
-              ${error instanceof Error ? error.message : String(error)}
-            </div>
-            <p class="mb-4">Please try checking the <a href="/debug" class="text-blue-600 underline">diagnostic page</a> for more information.</p>
-          </div>
-        </body>
-        </html>
-        `;
-        
-        return new Response(errorHtml, { 
-          status: 500,
-          headers: { "Content-Type": "text/html" }
+    try {
+      const url = new URL(request.url);
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      
+      // Store environment in global context for helpers to use
+      (globalThis as any).ENVIRONMENT = env;
+      
+      // Admin UI routes
+      if (pathParts.length === 0 || (pathParts.length === 1 && pathParts[0] === 'admin')) {
+        return await adminHandlers.fetch(request, env);
+      }
+      
+      // Health check endpoint
+      if (pathParts.length === 1 && pathParts[0] === 'health') {
+        return new Response(JSON.stringify({ status: 'ok' }), {
+          headers: { 'Content-Type': 'application/json' },
         });
       }
-    }
-    
-    // All other routes - still try the regular admin UI
-    try {
-      return await adminUI.fetch(request, env);
+      
+      // API and other endpoints
+      // TODO: Implement other endpoints here
+      
+      // Default 404 response
+      return new Response('Not found', { status: 404 });
     } catch (error) {
-      console.error("Error in adminUI for path:", url.pathname, error);
+      console.error('Application error:', error);
       return new Response(`Error: ${error instanceof Error ? error.message : String(error)}`, { 
         status: 500,
-        headers: { "Content-Type": "text/plain" }
+        headers: { 'Content-Type': 'text/plain' },
       });
     }
   },
   
   /**
-   * Handle scheduled events (cron triggers) - delegate to scheduler
+   * Handle scheduled events (cron triggers)
    */
-  scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    // Store environment in global context for access in other modules
-    (globalThis as any).ENVIRONMENT = env;
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Log scheduled event
+    console.log(`Scheduled event triggered at ${event.scheduledTime}`);
     
-    return scheduler.scheduled(event, env, ctx);
+    // Process leads for automated actions
+    // TODO: Implement scheduled processing
   },
   
   /**

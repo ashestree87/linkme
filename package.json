@@ -1,25 +1,29 @@
 {
 	"name": "linkme",
-	"version": "0.0.0",
-	"private": true,
+	"version": "1.0.0",
+	"description": "LinkedIn automation and lead management tool",
+	"main": "dist/index.js",
 	"scripts": {
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"build": "esbuild src/index.ts --bundle --outfile=dist/index.js --format=esm --target=es2022 --platform=node",
-		"test": "jest"
+		"dev": "wrangler dev src/index.ts",
+		"build": "tsc",
+		"deploy": "wrangler publish",
+		"format": "prettier --write '**/*.{js,ts,css,json,md}'"
 	},
+	"author": "",
+	"license": "MIT",
 	"dependencies": {
-		"@cloudflare/puppeteer": "latest",
+		"@cloudflare/puppeteer": "^1.4.0",
 		"htmx.org": "latest",
 		"itty-router": "latest"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20250514.0",
+		"@cloudflare/workers-types": "^4.20230904.0",
 		"@types/jest": "latest",
 		"@types/service-worker-mock": "^2.0.4",
 		"esbuild": "latest",
 		"jest": "latest",
-		"typescript": "^5.5.2",
-		"wrangler": "^4.14.4"
+		"prettier": "^2.8.8",
+		"typescript": "^5.0.4",
+		"wrangler": "^3.3.0"
 	}
 }
