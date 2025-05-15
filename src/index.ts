@@ -101,6 +101,159 @@ export default {
                     <li>Redeploy your worker</li>
                   </ol>
                 </div>
+                
+                <div class="mt-4">
+                  <a href="/linkedin-debug" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 inline-block">View Debug Information</a>
+                </div>
+              </div>
+            </div>
+          </body>
+          </html>
+        `, {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+      
+      // LinkedIn debug information endpoint
+      if (pathParts.length === 1 && pathParts[0] === 'linkedin-debug') {
+        const { verifyLinkedInAuth } = await import('./common');
+        const authStatus = await verifyLinkedInAuth();
+        
+        // If debugInfo is not available, show a message
+        if (!authStatus.debugInfo) {
+          return new Response(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>LinkedIn Debug Info</title>
+              <script src="https://cdn.tailwindcss.com"></script>
+            </head>
+            <body class="bg-gray-100 p-8">
+              <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6">
+                <h1 class="text-xl font-bold mb-4">LinkedIn Debug Information</h1>
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                  <p class="text-yellow-800">No debug information available. Please run the LinkedIn test again.</p>
+                </div>
+                <div class="mt-4">
+                  <a href="/linkedin-test" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 inline-block">Back to Test</a>
+                </div>
+              </div>
+            </body>
+            </html>
+          `, {
+            headers: { 'Content-Type': 'text/html' },
+          });
+        }
+        
+        // Generate HTML for timeline entries
+        const timelineHtml = authStatus.debugInfo.timeline.map((entry: string) => 
+          `<li class="py-1 border-b border-gray-100">${entry}</li>`
+        ).join('');
+        
+        // Generate HTML for screenshots
+        const screenshotsHtml = authStatus.debugInfo.screenshots.map((screenshot: any) => `
+          <div class="mb-6 border border-gray-200 rounded-lg overflow-hidden">
+            <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
+              <h3 class="font-medium text-gray-700">${screenshot.stage}</h3>
+            </div>
+            <div class="p-4">
+              <img src="data:image/png;base64,${screenshot.data}" alt="${screenshot.stage}" class="w-full border border-gray-300 rounded">
+            </div>
+          </div>
+        `).join('');
+        
+        // Generate HTML for login check results
+        let loginCheckHtml = '<p>No login check data available</p>';
+        if (authStatus.debugInfo.loginCheck) {
+          const loginCheck = authStatus.debugInfo.loginCheck;
+          
+          // Generate HTML for selectors
+          let selectorRows = '';
+          for (const [selector, found] of Object.entries(loginCheck.selectors)) {
+            selectorRows += `
+              <tr>
+                <td class="border px-4 py-2 font-mono text-sm">${selector}</td>
+                <td class="border px-4 py-2 text-center">${found ? '✅' : '❌'}</td>
+              </tr>
+            `;
+          }
+          
+          loginCheckHtml = `
+            <div class="mb-4">
+              <h3 class="font-medium text-gray-700 mb-2">Page Title</h3>
+              <p class="bg-gray-50 p-2 rounded border border-gray-200">${loginCheck.pageTitle || 'No title'}</p>
+            </div>
+            
+            <div class="mb-4">
+              <h3 class="font-medium text-gray-700 mb-2">Page Content Preview</h3>
+              <p class="bg-gray-50 p-2 rounded border border-gray-200 whitespace-pre-wrap">${loginCheck.bodyText || 'No content'}</p>
+            </div>
+            
+            <div>
+              <h3 class="font-medium text-gray-700 mb-2">Login Selectors</h3>
+              <div class="overflow-x-auto">
+                <table class="min-w-full bg-white border">
+                  <thead>
+                    <tr>
+                      <th class="border px-4 py-2 bg-gray-50">Selector</th>
+                      <th class="border px-4 py-2 bg-gray-50">Found</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${selectorRows}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+        }
+        
+        return new Response(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>LinkedIn Debug Info</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+          </head>
+          <body class="bg-gray-100 p-8">
+            <div class="max-w-4xl mx-auto">
+              <div class="flex gap-4 mb-6">
+                <a href="/linkedin-test" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 inline-block">Back to Test</a>
+                <h1 class="text-2xl font-bold">LinkedIn Debug Information</h1>
+              </div>
+              
+              <div class="bg-white rounded-xl shadow-md overflow-hidden p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Authentication Status</h2>
+                <div class="mb-4 p-4 rounded-md ${authStatus.isValid ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}">
+                  <p class="font-medium ${authStatus.isValid ? 'text-green-700' : 'text-red-700'}">${authStatus.isValid ? '✅ Authentication Working' : '❌ Authentication Failed'}</p>
+                  <p class="text-sm mt-1 ${authStatus.isValid ? 'text-green-600' : 'text-red-600'}">${authStatus.message}</p>
+                </div>
+              </div>
+              
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Timeline Section -->
+                <div class="bg-white rounded-xl shadow-md overflow-hidden p-6">
+                  <h2 class="text-xl font-semibold mb-4">Timeline</h2>
+                  <ul class="divide-y divide-gray-100">
+                    ${timelineHtml || '<li class="py-1">No timeline data available</li>'}
+                  </ul>
+                </div>
+                
+                <!-- Login Check Section -->
+                <div class="bg-white rounded-xl shadow-md overflow-hidden p-6">
+                  <h2 class="text-xl font-semibold mb-4">Login Check Results</h2>
+                  ${loginCheckHtml}
+                </div>
+              </div>
+              
+              <!-- Screenshots Section -->
+              <div class="mt-6 bg-white rounded-xl shadow-md overflow-hidden p-6">
+                <h2 class="text-xl font-semibold mb-4">Screenshots</h2>
+                ${screenshotsHtml || '<p>No screenshots available</p>'}
               </div>
             </div>
           </body>

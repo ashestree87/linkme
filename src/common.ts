@@ -112,7 +112,7 @@ export async function verifyLinkedInAuth(): Promise<{isValid: boolean, message: 
       try {
         await page.goto('https://www.linkedin.com/', { 
           waitUntil: 'domcontentloaded',
-          timeout: 60000 
+          timeout: 30000 
         });
         debugInfo.timeline.push("Successfully loaded LinkedIn homepage");
         
@@ -170,7 +170,7 @@ export async function verifyLinkedInAuth(): Promise<{isValid: boolean, message: 
       try {
         await page.goto('https://www.linkedin.com/feed/', { 
           waitUntil: 'domcontentloaded', // Changed from networkidle0 for faster loading
-          timeout: 60000 // Increased timeout to 60 seconds
+          timeout: 30000 // Increased timeout to 60 seconds
         });
         debugInfo.timeline.push("Successfully loaded LinkedIn feed page");
         
@@ -279,7 +279,7 @@ export async function withBrowser<T>(fn: (page: Page) => Promise<T>): Promise<T>
     await page.setUserAgent(env.USERAGENT);
     
     // Set default navigation timeout to be longer
-    page.setDefaultNavigationTimeout(60000);
+    page.setDefaultNavigationTimeout(30000);
     
     // Disable cache for fresh results
     await page.setCacheEnabled(false);
