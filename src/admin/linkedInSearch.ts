@@ -1,5 +1,6 @@
 import { AdminEnv, LinkedInProfile } from './types';
 import { withBrowser, withHumanBrowser, verifyLinkedInAuth } from '../common';
+import { withLinkedInBrowser } from '../browser';
 
 /**
  * Generate the connections view UI
@@ -107,9 +108,9 @@ export async function searchLinkedInUsers(env: AdminEnv, keywords: string, locat
     }
     
     try {
-      // First try with human-like browser
-      console.log('Attempting LinkedIn search with human-like browser...');
-      return await withHumanBrowser(async (page) => {
+      // First try with LinkedIn-optimized browser
+      console.log('Attempting LinkedIn search with optimized browser...');
+      return await withLinkedInBrowser(async (page) => {
         // For empty searches, use a default view that shows recent profiles
         let searchUrl = 'https://www.linkedin.com/sales/search/people?';
         

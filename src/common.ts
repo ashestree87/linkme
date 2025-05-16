@@ -16,3 +16,18 @@ export * from './linkedin-actions';
 // Note: To avoid circular dependencies, we don't directly import
 // human-behavior in browser.ts. Instead, we implement simplified
 // versions of those functions directly in withHumanBrowser.
+
+import { withBrowser, withHumanBrowser, handleCaptcha } from './browser';
+import { withLinkedInBrowser } from './browser';
+import { verifyLinkedInAuth } from './auth';
+import { getEnvironment } from './utils';
+
+// Re-export for convenience
+export { 
+  withBrowser, 
+  withHumanBrowser, 
+  withLinkedInBrowser,
+  verifyLinkedInAuth,
+  handleCaptcha,
+  getEnvironment
+};

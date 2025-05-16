@@ -1,5 +1,5 @@
 import { ActionResult } from './types';
-import { withHumanBrowser, handleCaptcha } from './browser';
+import { withHumanBrowser, withLinkedInBrowser, handleCaptcha } from './browser';
 import { humanClick, humanType, simulateReading } from './human-behavior';
 import { randomHumanDelay } from './utils';
 
@@ -10,7 +10,7 @@ import { randomHumanDelay } from './utils';
  * @returns Promise resolving to success status and additional info
  */
 export async function connectWithProfile(profileUrl: string, customMessage?: string): Promise<ActionResult> {
-  return await withHumanBrowser(async (page) => {
+  return await withLinkedInBrowser(async (page) => {
     try {
       console.log(`Navigating to profile: ${profileUrl}`);
       
@@ -276,7 +276,7 @@ export async function sendMessageToConnection(profileUrl: string, message: strin
     };
   }
 
-  return await withHumanBrowser(async (page) => {
+  return await withLinkedInBrowser(async (page) => {
     try {
       console.log(`Navigating to profile: ${profileUrl}`);
       
@@ -532,7 +532,7 @@ export async function searchConnections(searchQuery: string, maxResults: number 
     };
   }
 
-  return await withHumanBrowser(async (page) => {
+  return await withLinkedInBrowser(async (page) => {
     try {
       console.log("Starting connection search for:", searchQuery);
       

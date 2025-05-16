@@ -164,6 +164,123 @@ export default {
         });
       }
       
+      // Debug endpoint to show environment variables and binding status
+      if (pathParts.length === 1 && pathParts[0] === 'debug-env') {
+        // Create a safe version of env with sensitive data masked
+        const safeEnv = {
+          LI_AT: env.LI_AT ? `${env.LI_AT.substring(0, 5)}...${env.LI_AT.slice(-5)}` : 'NOT SET',
+          CSRF: env.CSRF ? `${env.CSRF.substring(0, 5)}...${env.CSRF.slice(-5)}` : 'NOT SET',
+          USERAGENT: env.USERAGENT ? 'SET' : 'NOT SET',
+          WEBHOOK_SECRET: env.WEBHOOK_SECRET ? 'SET' : 'NOT SET',
+          browser_binding: env.CRAWLER_BROWSER ? 'Available' : 'Not available',
+          kv_binding: env.TARGETS ? 'Available' : 'Not available',
+          db_binding: env.DB ? 'Available' : 'Not available',
+          queue_bindings: {
+            connections: env.LINKEDIN_CONNECTIONS_QUEUE ? 'Available' : 'Not available',
+            dms: env.LINKEDIN_DMS_QUEUE ? 'Available' : 'Not available'
+          }
+        };
+
+        // Test DB connection
+        let dbStatus = 'Unknown';
+        try {
+          const result = await env.DB.prepare('SELECT 1 as test').first();
+          dbStatus = result && result.test === 1 ? 'Working' : 'Error';
+        } catch (error) {
+          dbStatus = `Error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+
+        // Test KV connection
+        let kvStatus = 'Unknown';
+        try {
+          await env.TARGETS.put('test-key', 'test-value');
+          const value = await env.TARGETS.get('test-key');
+          kvStatus = value === 'test-value' ? 'Working' : 'Error';
+          await env.TARGETS.delete('test-key');
+        } catch (error) {
+          kvStatus = `Error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+
+        // Generate HTML response
+        return new Response(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>LinkMe Debug Environment</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+          </head>
+          <body class="bg-gray-100 p-8">
+            <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6">
+              <h1 class="text-xl font-bold mb-4">LinkMe Debug Environment</h1>
+              
+              <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-2">Environment Variables</h2>
+                <div class="bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="font-medium">LI_AT:</div>
+                    <div class="${safeEnv.LI_AT === 'NOT SET' ? 'text-red-600' : 'text-green-600'}">${safeEnv.LI_AT}</div>
+                    
+                    <div class="font-medium">CSRF:</div>
+                    <div class="${safeEnv.CSRF === 'NOT SET' ? 'text-red-600' : 'text-green-600'}">${safeEnv.CSRF}</div>
+                    
+                    <div class="font-medium">USERAGENT:</div>
+                    <div class="${safeEnv.USERAGENT === 'NOT SET' ? 'text-red-600' : 'text-green-600'}">${safeEnv.USERAGENT}</div>
+                    
+                    <div class="font-medium">WEBHOOK_SECRET:</div>
+                    <div class="${safeEnv.WEBHOOK_SECRET === 'NOT SET' ? 'text-red-600' : 'text-green-600'}">${safeEnv.WEBHOOK_SECRET}</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-2">Bindings Status</h2>
+                <div class="bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="font-medium">Browser Binding:</div>
+                    <div class="${safeEnv.browser_binding === 'Available' ? 'text-green-600' : 'text-red-600'}">${safeEnv.browser_binding}</div>
+                    
+                    <div class="font-medium">KV Binding:</div>
+                    <div class="${safeEnv.kv_binding === 'Available' ? 'text-green-600' : 'text-red-600'}">${safeEnv.kv_binding}</div>
+                    
+                    <div class="font-medium">DB Binding:</div>
+                    <div class="${safeEnv.db_binding === 'Available' ? 'text-green-600' : 'text-red-600'}">${safeEnv.db_binding}</div>
+                    
+                    <div class="font-medium">Connections Queue:</div>
+                    <div class="${safeEnv.queue_bindings.connections === 'Available' ? 'text-green-600' : 'text-red-600'}">${safeEnv.queue_bindings.connections}</div>
+                    
+                    <div class="font-medium">DMs Queue:</div>
+                    <div class="${safeEnv.queue_bindings.dms === 'Available' ? 'text-green-600' : 'text-red-600'}">${safeEnv.queue_bindings.dms}</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-2">Connection Tests</h2>
+                <div class="bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="font-medium">DB Connection:</div>
+                    <div class="${dbStatus === 'Working' ? 'text-green-600' : 'text-red-600'}">${dbStatus}</div>
+                    
+                    <div class="font-medium">KV Connection:</div>
+                    <div class="${kvStatus === 'Working' ? 'text-green-600' : 'text-red-600'}">${kvStatus}</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="mt-6">
+                <a href="/linkedin-test" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 mr-4">Test LinkedIn Auth</a>
+                <a href="/health" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Health Check</a>
+              </div>
+            </div>
+          </body>
+          </html>
+        `, {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+      
       // LinkedIn authentication test endpoint
       if (pathParts.length === 1 && pathParts[0] === 'linkedin-test') {
         const { verifyLinkedInAuth } = await import('./common');

@@ -1,0 +1,75 @@
+
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>LinkMe Debug Environment</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+          </head>
+          <body class="bg-gray-100 p-8">
+            <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6">
+              <h1 class="text-xl font-bold mb-4">LinkMe Debug Environment</h1>
+              
+              <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-2">Environment Variables</h2>
+                <div class="bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="font-medium">LI_AT:</div>
+                    <div class="text-green-600">AQEDA...6-y52</div>
+                    
+                    <div class="font-medium">CSRF:</div>
+                    <div class="text-green-600">"ajax...3392"</div>
+                    
+                    <div class="font-medium">USERAGENT:</div>
+                    <div class="text-green-600">SET</div>
+                    
+                    <div class="font-medium">WEBHOOK_SECRET:</div>
+                    <div class="text-green-600">SET</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-2">Bindings Status</h2>
+                <div class="bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="font-medium">Browser Binding:</div>
+                    <div class="text-green-600">Available</div>
+                    
+                    <div class="font-medium">KV Binding:</div>
+                    <div class="text-green-600">Available</div>
+                    
+                    <div class="font-medium">DB Binding:</div>
+                    <div class="text-green-600">Available</div>
+                    
+                    <div class="font-medium">Connections Queue:</div>
+                    <div class="text-green-600">Available</div>
+                    
+                    <div class="font-medium">DMs Queue:</div>
+                    <div class="text-green-600">Available</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-2">Connection Tests</h2>
+                <div class="bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="font-medium">DB Connection:</div>
+                    <div class="text-green-600">Working</div>
+                    
+                    <div class="font-medium">KV Connection:</div>
+                    <div class="text-green-600">Working</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="mt-6">
+                <a href="/linkedin-test" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 mr-4">Test LinkedIn Auth</a>
+                <a href="/health" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Health Check</a>
+              </div>
+            </div>
+          </body>
+          </html>
+        

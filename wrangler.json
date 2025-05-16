@@ -13,13 +13,15 @@
     {
       "binding": "DB",
       "database_name": "linkme-db",
-      "database_id": "d065973b-a304-4de6-bf8d-5b7e709f7677"
+      "database_id": "d065973b-a304-4de6-bf8d-5b7e709f7677",
+      "preview_database_id": "77e991ec-3d24-42ef-ab0b-c59d34049db3"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "TARGETS",
-      "id": "99226800f585490dab6d437ddaaf8960"
+      "id": "99226800f585490dab6d437ddaaf8960",
+      "preview_id": "b9c23cb79a6c4a4f85dcd58805dd0595"
     }
   ],
   "queues": {
